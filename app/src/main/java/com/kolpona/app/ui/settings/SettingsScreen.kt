@@ -1,6 +1,7 @@
 package com.kolpona.app.ui.settings
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -144,7 +145,7 @@ fun SettingsScreen(
         }
         Text(stringResource(R.string.default_aspect_ratio), style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(8.dp))
-        Row {
+        Row(modifier = Modifier.horizontalScroll(rememberScrollState())) {
             AspectRatio.entries.forEach { r ->
                 FilterChip(
                     selected = aspect == r,

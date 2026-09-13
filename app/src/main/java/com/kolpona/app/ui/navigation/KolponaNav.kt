@@ -42,7 +42,9 @@ import com.kolpona.app.ui.result.ResultScreen
 import com.kolpona.app.ui.result.ResultViewModel
 import com.kolpona.app.ui.settings.SettingsScreen
 import com.kolpona.app.ui.settings.SettingsViewModel
-import com.kolpona.app.ui.theme.PinkAccent
+import com.kolpona.app.ui.theme.ElectricBlue
+import com.kolpona.app.ui.theme.MidnightDeep
+import com.kolpona.app.ui.theme.MutedGray
 
 object Routes {
     const val ONBOARDING = "onboarding"
@@ -142,27 +144,34 @@ private fun MainTabs(
 
     Scaffold(
         bottomBar = {
-            NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
+            NavigationBar(containerColor = MidnightDeep) {
+                val itemColors = NavigationBarItemDefaults.colors(
+                    selectedIconColor = ElectricBlue,
+                    selectedTextColor = ElectricBlue,
+                    unselectedIconColor = MutedGray,
+                    unselectedTextColor = MutedGray,
+                    indicatorColor = ElectricBlue.copy(alpha = 0.16f)
+                )
                 NavigationBarItem(
                     selected = tab == MainTab.Home,
                     onClick = { tab = MainTab.Home },
                     icon = { Icon(Icons.Outlined.Chat, contentDescription = stringResource(R.string.nav_home)) },
                     label = { Text(stringResource(R.string.nav_home)) },
-                    colors = NavigationBarItemDefaults.colors(indicatorColor = PinkAccent.copy(alpha = 0.18f))
+                    colors = itemColors
                 )
                 NavigationBarItem(
                     selected = tab == MainTab.History,
                     onClick = { tab = MainTab.History },
                     icon = { Icon(Icons.Outlined.PhotoLibrary, contentDescription = stringResource(R.string.nav_history)) },
                     label = { Text(stringResource(R.string.nav_history)) },
-                    colors = NavigationBarItemDefaults.colors(indicatorColor = PinkAccent.copy(alpha = 0.18f))
+                    colors = itemColors
                 )
                 NavigationBarItem(
                     selected = tab == MainTab.Settings,
                     onClick = { tab = MainTab.Settings },
                     icon = { Icon(Icons.Outlined.Settings, contentDescription = stringResource(R.string.nav_settings)) },
                     label = { Text(stringResource(R.string.nav_settings)) },
-                    colors = NavigationBarItemDefaults.colors(indicatorColor = PinkAccent.copy(alpha = 0.18f))
+                    colors = itemColors
                 )
             }
         }

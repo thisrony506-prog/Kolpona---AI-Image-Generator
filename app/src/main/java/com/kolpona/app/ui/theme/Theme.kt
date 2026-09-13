@@ -30,17 +30,17 @@ private val LightColors = lightColorScheme(
 )
 
 private val DarkColors = darkColorScheme(
-    primary = PinkOnDark,
-    onPrimary = Ink,
-    primaryContainer = Color(0xFF3A1528),
+    primary = ElectricBlue,
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFF18233A),
     onPrimaryContainer = DarkInk,
-    secondary = PinkMuted,
-    onSecondary = Ink,
+    secondary = NeonViolet,
+    onSecondary = Color.White,
     background = DarkBg,
     onBackground = DarkInk,
     surface = DarkSurface,
     onSurface = DarkInk,
-    surfaceVariant = Color(0xFF1E1E24),
+    surfaceVariant = Color(0xFF151C2E),
     onSurfaceVariant = DarkSecondary,
     outline = DarkHairline,
     error = Color(0xFFFFB4AB)

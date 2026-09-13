@@ -138,6 +138,11 @@ class HomeViewModel(
         viewModelScope.launch { preferences.setDefaultAspectRatio(ratio) }
     }
 
+    fun onQualitySelected(quality: ImageQuality) {
+        _state.update { it.copy(quality = quality) }
+        viewModelScope.launch { preferences.setImageQuality(quality) }
+    }
+
     fun onMediaType(type: MediaKind) {
         _state.update { it.copy(mediaType = type) }
     }

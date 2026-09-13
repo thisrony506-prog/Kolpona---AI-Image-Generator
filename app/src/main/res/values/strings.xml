@@ -19,8 +19,18 @@
     <string name="hero_title">Create Something Amazing</string>
     <string name="hero_subtitle">Turn your imagination into beautiful AI-generated images.</string>
     <string name="chat_subtitle">AI studio</string>
-    <string name="chat_greeting">What do you want to create?</string>
-    <string name="chat_greeting_body">Describe an image or video. Kolpona will generate it in this chat.</string>
+    <string name="chat_greeting">Create Anything</string>
+    <string name="chat_greeting_body">Just type your idea...</string>
+    <string name="feature_image_body">Generate AI images</string>
+    <string name="feature_video_body">Generate AI videos</string>
+    <string name="feature_ratio_body">Set aspect ratio</string>
+    <string name="feature_quality_body">Set generation quality</string>
+    <string name="feature_style_body">Choose a visual style</string>
+    <string name="copy_prompt">Copy prompt</string>
+    <string name="prompt_copied">Prompt copied</string>
+    <string name="studio_mode">%1$s  ·  %2$s  ·  %3$s</string>
+    <string name="play_video">Play video</string>
+    <string name="add_options">Create options</string>
     <string name="chat_image_ready">Here is your image.</string>
     <string name="chat_video_ready">Here is your video.</string>
     <string name="chat_suggest_1">black formal pant for men, studio lighting, 4k, detailed fabric, fashion photography, professional product photography</string>
@@ -154,6 +164,7 @@
     <string name="enhance_prompts_subtitle">Understand any language or dialect, then add only relevant visual or motion detail. Original text stays in chat.</string>
     <string name="quality_standard">Standard</string>
     <string name="quality_high">High</string>
+    <string name="quality_ultra">Ultra</string>
     <string name="clear_history">Clear History</string>
     <string name="clear_history_confirm_title">Clear all history?</string>
     <string name="clear_history_confirm_body">This permanently deletes every saved creation on this device.</string>
@@ -190,4 +201,5 @@
     <string name="ratio_story">9:16</string>
     <string name="ratio_classic">4:3</string>
     <string name="ratio_portrait">3:4</string>
+    <string name="ratio_tall">4:5</string>
 </resources>

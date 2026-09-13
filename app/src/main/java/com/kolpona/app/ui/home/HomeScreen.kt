@@ -5,6 +5,8 @@ package com.kolpona.app.ui.home
 import android.Manifest
 import android.app.Activity
 import android.content.ActivityNotFoundException
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
@@ -13,7 +15,20 @@ import android.widget.Toast
 import android.widget.VideoView
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -23,33 +38,46 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.outlined.AccountBalance
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.Crop
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.FileDownload
+import androidx.compose.material.icons.outlined.HighQuality
 import androidx.compose.material.icons.outlined.Image
-import androidx.compose.material.icons.outlined.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.KeyboardArrowRight
+import androidx.compose.material.icons.outlined.Landscape
 import androidx.compose.material.icons.outlined.Mic
+import androidx.compose.material.icons.outlined.MovieFilter
+import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.material.icons.outlined.Pets
 import androidx.compose.material.icons.outlined.Refresh
-import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Videocam
 import androidx.compose.material3.AlertDialog
@@ -61,7 +89,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -76,6 +103,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -86,11 +115,13 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -102,16 +133,25 @@ import com.kolpona.app.domain.manager.CreditConfig
 import com.kolpona.app.domain.model.AspectRatio
 import com.kolpona.app.domain.model.GeneratedImage
 import com.kolpona.app.domain.model.GenerationError
+import com.kolpona.app.domain.model.ImageQuality
 import com.kolpona.app.domain.model.ImageStyle
 import com.kolpona.app.domain.model.MediaKind
 import com.kolpona.app.ui.components.KolponaMark
+import com.kolpona.app.ui.theme.ElectricBlue
+import com.kolpona.app.ui.theme.GlassFill
+import com.kolpona.app.ui.theme.GlassStroke
+import com.kolpona.app.ui.theme.MidnightDeep
+import com.kolpona.app.ui.theme.MutedGray
+import com.kolpona.app.ui.theme.NeonMagenta
+import com.kolpona.app.ui.theme.NeonViolet
 import com.kolpona.app.ui.theme.PinkAccent
+import com.kolpona.app.ui.theme.SoftWhite
 import com.kolpona.app.utils.formatArgs
 import com.kolpona.app.utils.messageRes
 import java.io.File
 import java.util.Locale
 
-private enum class OptionSheet { None, Category, Ratio }
+private enum class StudioSheet { None, Ratio, Quality, Category }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -129,7 +169,8 @@ fun HomeScreen(
     val listState = rememberLazyListState()
     var showCreditsSheet by rememberSaveable { mutableStateOf(false) }
     var showChatsSheet by rememberSaveable { mutableStateOf(false) }
-    var optionSheet by rememberSaveable { mutableStateOf(OptionSheet.None) }
+    var showPlusMenu by rememberSaveable { mutableStateOf(false) }
+    var studioSheet by rememberSaveable { mutableStateOf(StudioSheet.None) }
     var renameId by rememberSaveable { mutableStateOf<String?>(null) }
     var renameText by rememberSaveable { mutableStateOf("") }
     var deleteId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -200,6 +241,7 @@ fun HomeScreen(
     fun send() {
         keyboard?.hide()
         focusManager.clearFocus()
+        showPlusMenu = false
         viewModel.send()
     }
 
@@ -222,21 +264,20 @@ fun HomeScreen(
             .fillMaxSize()
             .imePadding()
     ) {
+        StudioBackground(Modifier.fillMaxSize())
         Column(Modifier.fillMaxSize()) {
-            ChatHeader(
+            StudioHeader(
                 credits = state.credits,
                 onCredits = { showCreditsSheet = true },
                 onChats = { showChatsSheet = true },
-                onNewChat = viewModel::newChat,
-                onSettings = onOpenSettings
+                onNewChat = viewModel::newChat
             )
 
             if (state.messages.isEmpty()) {
-                EmptyChat(
+                EmptyStudio(
                     modifier = Modifier
                         .weight(1f)
-                        .fillMaxWidth(),
-                    onSuggestion = viewModel::onPromptChange
+                        .fillMaxWidth()
                 )
             } else {
                 LazyColumn(
@@ -262,7 +303,11 @@ fun HomeScreen(
                                 },
                                 onShare = { viewModel.share(item.image, context.getString(R.string.share_image)) },
                                 onRegenerate = { viewModel.regenerate(item.image) },
-                                onVariation = { viewModel.variation(item.image) },
+                                onCopy = {
+                                    val clipboard = context.getSystemService(ClipboardManager::class.java)
+                                    clipboard?.setPrimaryClip(ClipData.newPlainText("prompt", item.image.prompt))
+                                    Toast.makeText(context, context.getString(R.string.prompt_copied), Toast.LENGTH_SHORT).show()
+                                },
                                 enabled = !state.isGenerating
                             )
                             is ChatItem.Pending -> PendingBubble(video = state.mediaType == MediaKind.VIDEO)
@@ -272,44 +317,55 @@ fun HomeScreen(
                 }
             }
 
-            MediaTypeSelector(
-                selected = state.mediaType,
-                onSelect = viewModel::onMediaType,
-                enabled = !state.isGenerating
-            )
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            AnimatedVisibility(
+                visible = showPlusMenu,
+                enter = fadeIn(tween(160)) + expandVertically(tween(180)),
+                exit = fadeOut(tween(120)) + shrinkVertically(tween(140))
             ) {
-                OptionPill(
-                    label = stringResource(R.string.category),
-                    value = stringResource(state.style.labelRes),
-                    onClick = { optionSheet = OptionSheet.Category },
-                    modifier = Modifier.weight(1f),
-                    enabled = !state.isGenerating
-                )
-                OptionPill(
-                    label = stringResource(R.string.ratio),
-                    value = state.aspectRatio.shortLabel,
-                    onClick = { optionSheet = OptionSheet.Ratio },
-                    modifier = Modifier.weight(1f),
-                    enabled = !state.isGenerating
+                FeatureMenu(
+                    mediaType = state.mediaType,
+                    onImage = {
+                        viewModel.onMediaType(MediaKind.IMAGE)
+                        showPlusMenu = false
+                    },
+                    onVideo = {
+                        viewModel.onMediaType(MediaKind.VIDEO)
+                        showPlusMenu = false
+                    },
+                    onRatio = {
+                        showPlusMenu = false
+                        studioSheet = StudioSheet.Ratio
+                    },
+                    onQuality = {
+                        showPlusMenu = false
+                        studioSheet = StudioSheet.Quality
+                    },
+                    onStyle = {
+                        showPlusMenu = false
+                        studioSheet = StudioSheet.Category
+                    }
                 )
             }
 
-            ChatComposer(
+            Text(
+                text = stringResource(
+                    R.string.studio_mode,
+                    stringResource(if (state.mediaType == MediaKind.VIDEO) R.string.media_video else R.string.media_image),
+                    state.aspectRatio.shortLabel,
+                    stringResource(state.quality.labelRes)
+                ),
+                color = MutedGray,
+                style = MaterialTheme.typography.labelMedium,
+                modifier = Modifier.padding(horizontal = 22.dp, vertical = 4.dp)
+            )
+
+            StudioComposer(
                 prompt = state.prompt,
                 onPromptChange = viewModel::onPromptChange,
-                onClear = viewModel::clearPrompt,
                 enabled = !state.isGenerating,
                 canSend = state.prompt.isNotBlank() && !state.isGenerating,
-                generateLabel = stringResource(
-                    if (state.mediaType == MediaKind.VIDEO) R.string.generate_video_short
-                    else R.string.generate_image_short
-                ),
+                plusOpen = showPlusMenu,
+                onPlus = { showPlusMenu = !showPlusMenu },
                 onVoice = { startVoice() },
                 onSend = { send() }
             )
@@ -329,7 +385,7 @@ fun HomeScreen(
                     .clickable(enabled = false, onClick = {}),
                 contentAlignment = Alignment.Center
             ) {
-                Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
+                Surface(shape = RoundedCornerShape(20.dp), color = GlassFill) {
                     Row(
                         modifier = Modifier.padding(horizontal = 22.dp, vertical = 16.dp),
                         verticalAlignment = Alignment.CenterVertically
@@ -337,42 +393,47 @@ fun HomeScreen(
                         CircularProgressIndicator(
                             modifier = Modifier.size(22.dp),
                             strokeWidth = 2.dp,
-                            color = PinkAccent
+                            color = ElectricBlue
                         )
                         Spacer(Modifier.size(12.dp))
-                        Text(stringResource(R.string.ad_loading))
+                        Text(stringResource(R.string.ad_loading), color = SoftWhite)
                     }
                 }
             }
         }
     }
 
-    if (optionSheet != OptionSheet.None) {
+    if (studioSheet != StudioSheet.None) {
         ModalBottomSheet(
-            onDismissRequest = { optionSheet = OptionSheet.None },
+            onDismissRequest = { studioSheet = StudioSheet.None },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-            containerColor = MaterialTheme.colorScheme.surface
+            containerColor = Color(0xFF0E1424)
         ) {
-            when (optionSheet) {
-                OptionSheet.Category -> OptionList(
+            when (studioSheet) {
+                StudioSheet.Ratio -> RatioPicker(
+                    selected = state.aspectRatio,
+                    onPick = {
+                        viewModel.onAspectSelected(it)
+                        studioSheet = StudioSheet.None
+                    }
+                )
+                StudioSheet.Quality -> QualityPicker(
+                    selected = state.quality,
+                    onPick = {
+                        viewModel.onQualitySelected(it)
+                        studioSheet = StudioSheet.None
+                    }
+                )
+                StudioSheet.Category -> OptionList(
                     title = stringResource(R.string.category),
                     options = ImageStyle.entries.map { stringResource(it.labelRes) to it },
                     selected = state.style,
                     onPick = {
                         viewModel.onStyleSelected(it)
-                        optionSheet = OptionSheet.None
+                        studioSheet = StudioSheet.None
                     }
                 )
-                OptionSheet.Ratio -> OptionList(
-                    title = stringResource(R.string.ratio),
-                    options = AspectRatio.entries.map { it.shortLabel to it },
-                    selected = state.aspectRatio,
-                    onPick = {
-                        viewModel.onAspectSelected(it)
-                        optionSheet = OptionSheet.None
-                    }
-                )
-                OptionSheet.None -> Unit
+                StudioSheet.None -> Unit
             }
         }
     }
@@ -381,7 +442,7 @@ fun HomeScreen(
         ModalBottomSheet(
             onDismissRequest = { showChatsSheet = false },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-            containerColor = MaterialTheme.colorScheme.surface
+            containerColor = Color(0xFF0E1424)
         ) {
             ChatSessionsSheet(
                 sessions = state.sessions,
@@ -453,7 +514,7 @@ fun HomeScreen(
         ModalBottomSheet(
             onDismissRequest = { if (!state.watchingAd) showCreditsSheet = false },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-            containerColor = MaterialTheme.colorScheme.surface
+            containerColor = Color(0xFF0E1424)
         ) {
             CreditsSheet(
                 credits = state.credits,
@@ -494,166 +555,341 @@ private fun speechIntent(prompt: String): Intent =
     }
 
 @Composable
-private fun ChatHeader(
+private fun StudioBackground(modifier: Modifier = Modifier) {
+    val motion = rememberInfiniteTransition(label = "glow")
+    val shift by motion.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(14000, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "shift"
+    )
+    Canvas(modifier.background(MidnightDeep)) {
+        val w = size.width
+        val h = size.height
+        drawCircle(
+            color = ElectricBlue.copy(alpha = 0.16f),
+            radius = w * 0.42f,
+            center = Offset(w * (0.08f + shift * 0.04f), h * 0.06f)
+        )
+        drawCircle(
+            color = NeonViolet.copy(alpha = 0.14f),
+            radius = w * 0.38f,
+            center = Offset(w * (0.96f - shift * 0.03f), h * 0.22f)
+        )
+        drawCircle(
+            color = NeonMagenta.copy(alpha = 0.10f),
+            radius = w * 0.34f,
+            center = Offset(w * 0.55f, h * (0.92f - shift * 0.03f))
+        )
+    }
+}
+
+@Composable
+private fun StudioHeader(
     credits: Int,
     onCredits: () -> Unit,
     onChats: () -> Unit,
-    onNewChat: () -> Unit,
-    onSettings: () -> Unit
+    onNewChat: () -> Unit
 ) {
     val creditsDesc = stringResource(R.string.cd_credits)
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(horizontal = 14.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        KolponaMark(size = 36.dp)
+        KolponaMark(size = 38.dp)
         Spacer(Modifier.size(10.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = stringResource(R.string.app_name),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = stringResource(R.string.chat_subtitle),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        Surface(
-            shape = RoundedCornerShape(20.dp),
-            color = PinkAccent.copy(alpha = 0.14f),
+        Text(
+            text = stringResource(R.string.app_name),
+            color = SoftWhite,
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.weight(1f)
+        )
+        Box(
             modifier = Modifier
-                .height(40.dp)
+                .height(36.dp)
+                .clip(RoundedCornerShape(18.dp))
+                .background(ElectricBlue.copy(alpha = 0.16f))
+                .border(1.dp, ElectricBlue.copy(alpha = 0.4f), RoundedCornerShape(18.dp))
                 .clickable(onClick = onCredits)
-                .semantics { contentDescription = creditsDesc }
+                .padding(horizontal = 12.dp)
+                .semantics { contentDescription = creditsDesc },
+            contentAlignment = Alignment.Center
         ) {
-            Box(Modifier.padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
-                Text(
-                    text = stringResource(R.string.credits_count, credits),
-                    color = PinkAccent,
-                    fontWeight = FontWeight.SemiBold,
-                    style = MaterialTheme.typography.labelLarge
-                )
-            }
+            Text(
+                text = stringResource(R.string.credits_count, credits),
+                color = ElectricBlue,
+                fontWeight = FontWeight.SemiBold,
+                style = MaterialTheme.typography.labelLarge
+            )
         }
         IconButton(onClick = onChats, modifier = Modifier.size(44.dp)) {
-            Icon(Icons.Outlined.ChatBubbleOutline, contentDescription = stringResource(R.string.cd_chats))
+            Icon(Icons.Outlined.ChatBubbleOutline, contentDescription = stringResource(R.string.cd_chats), tint = SoftWhite)
         }
         IconButton(onClick = onNewChat, modifier = Modifier.size(44.dp)) {
-            Icon(Icons.Outlined.Edit, contentDescription = stringResource(R.string.cd_new_chat))
-        }
-        IconButton(onClick = onSettings, modifier = Modifier.size(44.dp)) {
-            Icon(Icons.Outlined.Settings, contentDescription = stringResource(R.string.cd_settings))
+            Icon(Icons.Outlined.Edit, contentDescription = stringResource(R.string.cd_new_chat), tint = SoftWhite)
         }
     }
 }
 
 @Composable
-private fun ChatSessionsSheet(
-    sessions: List<ChatSessionEntity>,
-    currentId: String,
-    onOpen: (String) -> Unit,
-    onNew: () -> Unit,
-    onRename: (String, String) -> Unit,
-    onDelete: (String) -> Unit
-) {
-    Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
-        Text(stringResource(R.string.chats), style = MaterialTheme.typography.titleLarge)
-        Spacer(Modifier.height(8.dp))
-        TextButton(onClick = onNew) {
-            Icon(Icons.Outlined.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.size(8.dp))
-            Text(stringResource(R.string.new_chat))
-        }
-        if (sessions.isEmpty()) {
-            Text(
-                text = stringResource(R.string.chat_untitled),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(vertical = 12.dp)
-            )
-        } else {
-            sessions.forEach { session ->
-                val active = session.id == currentId
-                Surface(
-                    onClick = { onOpen(session.id) },
-                    shape = RoundedCornerShape(14.dp),
-                    color = if (active) PinkAccent.copy(alpha = 0.16f) else Color.Transparent,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 4.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = session.title.ifBlank { stringResource(R.string.chat_untitled) },
-                            modifier = Modifier.weight(1f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
-                            color = if (active) PinkAccent else MaterialTheme.colorScheme.onSurface
-                        )
-                        IconButton(onClick = { onRename(session.id, session.title) }, modifier = Modifier.size(40.dp)) {
-                            Icon(Icons.Outlined.Edit, contentDescription = stringResource(R.string.rename_chat))
-                        }
-                        IconButton(onClick = { onDelete(session.id) }, modifier = Modifier.size(40.dp)) {
-                            Icon(Icons.Outlined.Delete, contentDescription = stringResource(R.string.delete_chat))
-                        }
-                    }
-                }
-            }
-        }
-        Spacer(Modifier.height(24.dp))
-    }
-}
-
-@Composable
-private fun EmptyChat(onSuggestion: (String) -> Unit, modifier: Modifier = Modifier) {
-    val suggestions = listOf(
-        stringResource(R.string.chat_suggest_1),
-        stringResource(R.string.chat_suggest_2),
-        stringResource(R.string.chat_suggest_3)
-    )
+private fun EmptyStudio(modifier: Modifier = Modifier) {
+    val titleBrush = Brush.linearGradient(listOf(ElectricBlue, NeonViolet, PinkAccent))
     Column(
-        modifier = modifier.padding(horizontal = 24.dp),
+        modifier = modifier.padding(horizontal = 28.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        KolponaMark(size = 72.dp)
-        Spacer(Modifier.height(20.dp))
+        Box(
+            modifier = Modifier
+                .size(108.dp)
+                .border(1.dp, ElectricBlue.copy(alpha = 0.35f), RoundedCornerShape(32.dp))
+                .background(ElectricBlue.copy(alpha = 0.08f), RoundedCornerShape(32.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            KolponaMark(size = 72.dp)
+        }
+        Spacer(Modifier.height(28.dp))
         Text(
             text = stringResource(R.string.chat_greeting),
-            style = MaterialTheme.typography.headlineMedium,
+            style = TextStyle(
+                brush = titleBrush,
+                fontWeight = FontWeight.Bold,
+                fontSize = 34.sp,
+                letterSpacing = (-0.4).sp
+            ),
             textAlign = TextAlign.Center
         )
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(10.dp))
         Text(
             text = stringResource(R.string.chat_greeting_body),
+            color = MutedGray,
             style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center
         )
-        Spacer(Modifier.height(24.dp))
-        suggestions.forEach { text ->
-            SuggestionChip(
-                onClick = { onSuggestion(text) },
-                label = {
-                    Text(
-                        text = text,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp)
+    }
+}
+
+@Composable
+private fun FeatureMenu(
+    mediaType: MediaKind,
+    onImage: () -> Unit,
+    onVideo: () -> Unit,
+    onRatio: () -> Unit,
+    onQuality: () -> Unit,
+    onStyle: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .padding(horizontal = 14.dp, vertical = 6.dp)
+            .clip(RoundedCornerShape(22.dp))
+            .background(GlassFill)
+            .border(1.dp, GlassStroke, RoundedCornerShape(22.dp))
+            .padding(8.dp)
+    ) {
+        FeatureRow(
+            icon = Icons.Outlined.Image,
+            tint = ElectricBlue,
+            title = stringResource(R.string.media_image),
+            body = stringResource(R.string.feature_image_body),
+            selected = mediaType == MediaKind.IMAGE,
+            onClick = onImage
+        )
+        FeatureRow(
+            icon = Icons.Outlined.Videocam,
+            tint = NeonViolet,
+            title = stringResource(R.string.media_video),
+            body = stringResource(R.string.feature_video_body),
+            selected = mediaType == MediaKind.VIDEO,
+            onClick = onVideo
+        )
+        FeatureRow(
+            icon = Icons.Outlined.Crop,
+            tint = NeonMagenta,
+            title = stringResource(R.string.ratio),
+            body = stringResource(R.string.feature_ratio_body),
+            onClick = onRatio
+        )
+        FeatureRow(
+            icon = Icons.Outlined.HighQuality,
+            tint = ElectricBlue,
+            title = stringResource(R.string.quality_label),
+            body = stringResource(R.string.feature_quality_body),
+            onClick = onQuality
+        )
+        FeatureRow(
+            icon = Icons.Outlined.Palette,
+            tint = PinkAccent,
+            title = stringResource(R.string.category),
+            body = stringResource(R.string.feature_style_body),
+            onClick = onStyle
+        )
+    }
+}
+
+@Composable
+private fun FeatureRow(
+    icon: ImageVector,
+    tint: Color,
+    title: String,
+    body: String,
+    selected: Boolean = false,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(if (selected) tint.copy(alpha = 0.12f) else Color.Transparent)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(42.dp)
+                .background(tint.copy(alpha = 0.18f), RoundedCornerShape(12.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(22.dp))
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, color = SoftWhite, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.titleMedium)
+            Text(body, color = MutedGray, style = MaterialTheme.typography.bodyMedium)
+        }
+        Icon(Icons.Outlined.KeyboardArrowRight, contentDescription = null, tint = MutedGray)
+    }
+}
+
+@Composable
+private fun StudioComposer(
+    prompt: String,
+    onPromptChange: (String) -> Unit,
+    enabled: Boolean,
+    canSend: Boolean,
+    plusOpen: Boolean,
+    onPlus: () -> Unit,
+    onVoice: () -> Unit,
+    onSend: () -> Unit
+) {
+    val addDesc = stringResource(R.string.add_options)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+            .heightIn(min = 58.dp)
+            .clip(RoundedCornerShape(30.dp))
+            .background(Color(0xE6101827))
+            .border(1.dp, ElectricBlue.copy(alpha = 0.45f), RoundedCornerShape(30.dp))
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.Bottom
+    ) {
+        Box(
+            modifier = Modifier
+                .size(42.dp)
+                .border(1.5.dp, ElectricBlue, CircleShape)
+                .clip(CircleShape)
+                .clickable(enabled = enabled, onClick = onPlus)
+                .semantics { contentDescription = addDesc },
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = if (plusOpen) Icons.Outlined.Close else Icons.Outlined.Add,
+                contentDescription = addDesc,
+                tint = ElectricBlue
             )
+        }
+        BasicTextField(
+            value = prompt,
+            onValueChange = onPromptChange,
+            enabled = enabled,
+            modifier = Modifier
+                .weight(1f)
+                .padding(horizontal = 10.dp, vertical = 10.dp),
+            textStyle = MaterialTheme.typography.bodyLarge.copy(color = SoftWhite),
+            cursorBrush = SolidColor(ElectricBlue),
+            maxLines = 6,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default),
+            keyboardActions = KeyboardActions(),
+            decorationBox = { inner ->
+                if (prompt.isEmpty()) {
+                    Text(
+                        text = stringResource(R.string.prompt_hint),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MutedGray
+                    )
+                }
+                inner()
+            }
+        )
+        IconButton(onClick = onVoice, enabled = enabled, modifier = Modifier.size(42.dp)) {
+            Icon(Icons.Outlined.Mic, contentDescription = stringResource(R.string.voice_input), tint = MutedGray)
+        }
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(Brush.linearGradient(listOf(ElectricBlue, NeonViolet, PinkAccent)))
+                .then(if (canSend) Modifier else Modifier.background(Color.Black.copy(alpha = 0.45f)))
+                .clickable(enabled = canSend, onClick = onSend),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Filled.ArrowUpward, contentDescription = stringResource(R.string.send), tint = Color.White)
+        }
+    }
+}
+
+@Composable
+private fun PromptSuggestionChips(
+    video: Boolean,
+    enabled: Boolean,
+    onPick: (String) -> Unit
+) {
+    val chips = if (video) {
+        listOf(
+            Triple(Icons.Outlined.Pets, stringResource(R.string.chip_cat), stringResource(R.string.chip_prompt_cat_video)),
+            Triple(Icons.Outlined.MovieFilter, stringResource(R.string.chip_cinematic), stringResource(R.string.chip_prompt_cinematic_video)),
+            Triple(Icons.Outlined.AccountBalance, stringResource(R.string.chip_castle), stringResource(R.string.chip_prompt_castle_video)),
+            Triple(Icons.Outlined.Landscape, stringResource(R.string.chip_nature), stringResource(R.string.chip_prompt_nature_video))
+        )
+    } else {
+        listOf(
+            Triple(Icons.Outlined.Pets, stringResource(R.string.chip_cat), stringResource(R.string.chip_prompt_cat)),
+            Triple(Icons.Outlined.MovieFilter, stringResource(R.string.chip_cinematic), stringResource(R.string.chip_prompt_cinematic)),
+            Triple(Icons.Outlined.TempleHindu, stringResource(R.string.chip_castle), stringResource(R.string.chip_prompt_castle)),
+            Triple(Icons.Outlined.Landscape, stringResource(R.string.chip_nature), stringResource(R.string.chip_prompt_nature))
+        )
+    }
+    val tints = listOf(ElectricBlue, NeonViolet, PinkAccent, ElectricBlue)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(start = 12.dp, end = 12.dp, bottom = 10.dp, top = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        chips.forEachIndexed { index, (icon, label, prompt) ->
+            val tint = tints[index % tints.size]
+            Row(
+                modifier = Modifier
+                    .height(36.dp)
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(Color(0xCC101827))
+                    .border(1.dp, tint.copy(alpha = 0.35f), RoundedCornerShape(18.dp))
+                    .clickable(enabled = enabled) { onPick(prompt) }
+                    .padding(horizontal = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(label, color = SoftWhite, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+            }
         }
     }
 }
@@ -661,14 +897,15 @@ private fun EmptyChat(onSuggestion: (String) -> Unit, modifier: Modifier = Modif
 @Composable
 private fun UserBubble(text: String) {
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-        Surface(
-            shape = RoundedCornerShape(20.dp, 20.dp, 6.dp, 20.dp),
-            color = PinkAccent,
-            modifier = Modifier.widthIn(max = 320.dp)
+        Box(
+            modifier = Modifier
+                .widthIn(max = 320.dp)
+                .clip(RoundedCornerShape(20.dp, 20.dp, 6.dp, 20.dp))
+                .background(Brush.linearGradient(listOf(ElectricBlue, NeonViolet)))
         ) {
             Text(
                 text = text,
-                color = MaterialTheme.colorScheme.onPrimary,
+                color = Color.White,
                 style = MaterialTheme.typography.bodyLarge,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
             )
@@ -681,17 +918,14 @@ private fun AssistantTextBubble(text: String) {
     Row(modifier = Modifier.fillMaxWidth()) {
         KolponaMark(size = 28.dp)
         Spacer(Modifier.size(8.dp))
-        Surface(
-            shape = RoundedCornerShape(20.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant,
-            modifier = Modifier.widthIn(max = 320.dp)
-        ) {
-            Text(
-                text = text,
-                style = MaterialTheme.typography.bodyLarge,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
-            )
-        }
+        Text(
+            text = text,
+            color = SoftWhite,
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier
+                .widthIn(max = 320.dp)
+                .padding(top = 4.dp)
+        )
     }
 }
 
@@ -702,7 +936,7 @@ private fun ResultCard(
     onDownload: () -> Unit,
     onShare: () -> Unit,
     onRegenerate: () -> Unit,
-    onVariation: () -> Unit,
+    onCopy: () -> Unit,
     enabled: Boolean
 ) {
     val ratio = (image.width.toFloat() / image.height.coerceAtLeast(1).toFloat()).coerceIn(0.5f, 1.9f)
@@ -710,28 +944,44 @@ private fun ResultCard(
     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
         KolponaMark(size = 28.dp)
         Spacer(Modifier.size(8.dp))
-        Surface(
-            shape = RoundedCornerShape(22.dp),
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 2.dp,
-            modifier = Modifier.widthIn(max = 340.dp)
+        Column(
+            modifier = Modifier
+                .widthIn(max = 340.dp)
+                .clip(RoundedCornerShape(22.dp))
+                .background(GlassFill)
+                .border(1.dp, GlassStroke, RoundedCornerShape(22.dp))
+                .padding(10.dp)
         ) {
-            Column(Modifier.padding(10.dp)) {
-                Text(
-                    text = stringResource(if (image.isVideo) R.string.chat_video_ready else R.string.chat_image_ready),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
+            Text(
+                text = stringResource(if (image.isVideo) R.string.chat_video_ready else R.string.chat_image_ready),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MutedGray,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(ratio)
+                    .clip(RoundedCornerShape(16.dp))
+                    .clickable(onClick = onOpen)
+            ) {
                 if (image.isVideo) {
-                    LoopingVideo(
-                        path = image.localPath,
+                    LoopingVideo(path = image.localPath, modifier = Modifier.fillMaxSize())
+                    Box(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(ratio)
-                            .clip(RoundedCornerShape(16.dp))
-                            .clickable(onClick = onOpen)
-                    )
+                            .align(Alignment.Center)
+                            .size(52.dp)
+                            .background(Color.Black.copy(alpha = 0.45f), CircleShape)
+                            .border(1.dp, ElectricBlue.copy(alpha = 0.7f), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Filled.PlayArrow,
+                            contentDescription = stringResource(R.string.play_video),
+                            tint = Color.White,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
                 } else {
                     AsyncImage(
                         model = ImageRequest.Builder(LocalContext.current)
@@ -740,41 +990,32 @@ private fun ResultCard(
                             .build(),
                         contentDescription = stringResource(R.string.cd_generated_image),
                         contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(ratio)
-                            .clip(RoundedCornerShape(16.dp))
-                            .clickable(onClick = onOpen)
+                        modifier = Modifier.fillMaxSize()
                     )
                 }
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = image.prompt,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = stringResource(R.string.meta_category, stringResource(category.labelRes)) +
-                        "  ·  " +
-                        stringResource(R.string.meta_ratio, image.aspectRatioId) +
-                        if (image.isVideo) "  ·  " + stringResource(R.string.duration_seconds, 5) else "",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(0.dp)
-                ) {
-                    CardAction(Icons.Outlined.FileDownload, stringResource(R.string.download), onDownload, enabled)
-                    CardAction(Icons.Outlined.Share, stringResource(R.string.share), onShare, enabled)
-                    CardAction(Icons.Outlined.Refresh, stringResource(R.string.regenerate), onRegenerate, enabled)
-                    if (!image.isVideo) {
-                        CardAction(Icons.Outlined.AutoAwesome, stringResource(R.string.variation), onVariation, enabled)
-                    }
-                }
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = image.prompt,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MutedGray,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = stringResource(R.string.meta_category, stringResource(category.labelRes)) +
+                    "  ·  " +
+                    stringResource(R.string.meta_ratio, image.aspectRatioId) +
+                    if (image.isVideo) "  ·  " + stringResource(R.string.duration_seconds, 5) else "",
+                style = MaterialTheme.typography.labelMedium,
+                color = MutedGray
+            )
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(0.dp)) {
+                CardAction(Icons.Outlined.FileDownload, stringResource(R.string.download), onDownload, enabled)
+                CardAction(Icons.Outlined.Share, stringResource(R.string.share), onShare, enabled)
+                CardAction(Icons.Outlined.Refresh, stringResource(R.string.regenerate), onRegenerate, enabled)
+                CardAction(Icons.Outlined.ContentCopy, stringResource(R.string.copy_prompt), onCopy, enabled)
             }
         }
     }
@@ -783,9 +1024,9 @@ private fun ResultCard(
 @Composable
 private fun CardAction(icon: ImageVector, label: String, onClick: () -> Unit, enabled: Boolean) {
     TextButton(onClick = onClick, enabled = enabled, modifier = Modifier.height(40.dp)) {
-        Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp))
+        Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp), tint = ElectricBlue)
         Spacer(Modifier.size(4.dp))
-        Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+        Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1, color = SoftWhite)
     }
 }
 
@@ -808,21 +1049,31 @@ private fun LoopingVideo(path: String, modifier: Modifier = Modifier) {
 
 @Composable
 private fun PendingBubble(video: Boolean) {
+    val pulse = rememberInfiniteTransition(label = "pending")
+    val alpha by pulse.animateFloat(
+        initialValue = 0.45f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(900), RepeatMode.Reverse),
+        label = "alpha"
+    )
     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         KolponaMark(size = 28.dp)
         Spacer(Modifier.size(8.dp))
-        Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
-            Row(
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = PinkAccent)
-                Spacer(Modifier.size(10.dp))
-                Text(
-                    text = stringResource(if (video) R.string.creating_video else R.string.creating_image),
-                    style = MaterialTheme.typography.bodyLarge
-                )
-            }
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(20.dp))
+                .background(GlassFill)
+                .border(1.dp, GlassStroke, RoundedCornerShape(20.dp))
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = ElectricBlue)
+            Spacer(Modifier.size(10.dp))
+            Text(
+                text = stringResource(if (video) R.string.creating_video else R.string.creating_image),
+                style = MaterialTheme.typography.bodyLarge,
+                color = SoftWhite.copy(alpha = alpha)
+            )
         }
     }
 }
@@ -834,17 +1085,17 @@ private fun ErrorBubble(error: GenerationError, onRetry: () -> Unit) {
     Row(modifier = Modifier.fillMaxWidth()) {
         KolponaMark(size = 28.dp)
         Spacer(Modifier.size(8.dp))
-        Surface(
-            shape = RoundedCornerShape(20.dp),
-            color = MaterialTheme.colorScheme.errorContainer,
-            modifier = Modifier.widthIn(max = 320.dp)
+        Column(
+            modifier = Modifier
+                .widthIn(max = 320.dp)
+                .clip(RoundedCornerShape(20.dp))
+                .background(Color(0x33FF6B6B))
+                .padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                Text(text = message, color = MaterialTheme.colorScheme.onErrorContainer)
-                if (error != GenerationError.EMPTY_PROMPT) {
-                    TextButton(onClick = onRetry) {
-                        Text(stringResource(R.string.try_again), color = PinkAccent)
-                    }
+            Text(text = message, color = SoftWhite)
+            if (error != GenerationError.EMPTY_PROMPT) {
+                TextButton(onClick = onRetry) {
+                    Text(stringResource(R.string.try_again), color = ElectricBlue)
                 }
             }
         }
@@ -852,99 +1103,87 @@ private fun ErrorBubble(error: GenerationError, onRetry: () -> Unit) {
 }
 
 @Composable
-private fun MediaTypeSelector(
-    selected: MediaKind,
-    onSelect: (MediaKind) -> Unit,
-    enabled: Boolean
-) {
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 4.dp),
-        shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant
-    ) {
-        Row(Modifier.padding(4.dp)) {
-            MediaTab(
-                label = stringResource(R.string.media_image),
-                icon = Icons.Outlined.Image,
-                selected = selected == MediaKind.IMAGE,
-                onClick = { onSelect(MediaKind.IMAGE) },
-                enabled = enabled,
-                modifier = Modifier.weight(1f)
-            )
-            MediaTab(
-                label = stringResource(R.string.media_video),
-                icon = Icons.Outlined.Videocam,
-                selected = selected == MediaKind.VIDEO,
-                onClick = { onSelect(MediaKind.VIDEO) },
-                enabled = enabled,
-                modifier = Modifier.weight(1f)
-            )
-        }
-    }
-}
-
-@Composable
-private fun MediaTab(
-    label: String,
-    icon: ImageVector,
-    selected: Boolean,
-    onClick: () -> Unit,
-    enabled: Boolean,
-    modifier: Modifier = Modifier
-) {
-    Box(
-        modifier = modifier
-            .height(42.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .background(if (selected) PinkAccent else Color.Transparent)
-            .clickable(enabled = enabled, onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                modifier = Modifier.size(18.dp),
-                tint = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
-            )
-            Spacer(Modifier.size(6.dp))
-            Text(
-                text = label,
-                color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
-                fontWeight = FontWeight.SemiBold,
-                style = MaterialTheme.typography.labelLarge
-            )
-        }
-    }
-}
-
-@Composable
-private fun OptionPill(
-    label: String,
-    value: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    enabled: Boolean
-) {
-    Surface(
-        onClick = onClick,
-        enabled = enabled,
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        modifier = modifier.height(44.dp)
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(value, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, maxLines = 1)
+private fun RatioPicker(selected: AspectRatio, onPick: (AspectRatio) -> Unit) {
+    Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
+        Text(stringResource(R.string.ratio), color = SoftWhite, style = MaterialTheme.typography.titleLarge)
+        Spacer(Modifier.height(16.dp))
+        AspectRatio.entries.forEach { ratio ->
+            val active = ratio == selected
+            val preview = (ratio.shortLabel.split(":").let {
+                val w = it.getOrNull(0)?.toFloatOrNull() ?: 1f
+                val h = it.getOrNull(1)?.toFloatOrNull() ?: 1f
+                (w / h).coerceIn(0.4f, 2.2f)
+            })
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(if (active) ElectricBlue.copy(alpha = 0.16f) else Color.Transparent)
+                    .clickable { onPick(ratio) }
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier.size(48.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight(0.82f)
+                            .aspectRatio(preview)
+                            .border(
+                                1.5.dp,
+                                if (active) ElectricBlue else MutedGray,
+                                RoundedCornerShape(5.dp)
+                            )
+                    )
+                }
+                Spacer(Modifier.width(14.dp))
+                Text(
+                    text = ratio.shortLabel,
+                    color = if (active) ElectricBlue else SoftWhite,
+                    fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+                    style = MaterialTheme.typography.titleMedium
+                )
             }
-            Icon(Icons.Outlined.KeyboardArrowDown, contentDescription = null, modifier = Modifier.size(18.dp))
         }
+        Spacer(Modifier.height(24.dp))
+    }
+}
+
+@Composable
+private fun QualityPicker(selected: ImageQuality, onPick: (ImageQuality) -> Unit) {
+    Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
+        Text(stringResource(R.string.quality_label), color = SoftWhite, style = MaterialTheme.typography.titleLarge)
+        Spacer(Modifier.height(16.dp))
+        ImageQuality.entries.forEach { quality ->
+            val active = quality == selected
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(if (active) NeonViolet.copy(alpha = 0.16f) else Color.Transparent)
+                    .clickable { onPick(quality) }
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stringResource(quality.labelRes),
+                    color = if (active) NeonViolet else SoftWhite,
+                    fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f)
+                )
+                if (active) {
+                    Box(
+                        modifier = Modifier
+                            .size(10.dp)
+                            .background(NeonViolet, CircleShape)
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.height(24.dp))
     }
 }
 
@@ -956,23 +1195,23 @@ private fun <T> OptionList(
     onPick: (T) -> Unit
 ) {
     Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
-        Text(title, style = MaterialTheme.typography.titleLarge)
+        Text(title, color = SoftWhite, style = MaterialTheme.typography.titleLarge)
         Spacer(Modifier.height(12.dp))
         options.forEach { (label, value) ->
             val active = value == selected
-            Surface(
-                onClick = { onPick(value) },
-                shape = RoundedCornerShape(14.dp),
-                color = if (active) PinkAccent.copy(alpha = 0.16f) else Color.Transparent,
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(bottom = 6.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(if (active) PinkAccent.copy(alpha = 0.16f) else Color.Transparent)
+                    .clickable { onPick(value) }
             ) {
                 Text(
                     text = label,
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
                     fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
-                    color = if (active) PinkAccent else MaterialTheme.colorScheme.onSurface
+                    color = if (active) PinkAccent else SoftWhite
                 )
             }
         }
@@ -981,116 +1220,60 @@ private fun <T> OptionList(
 }
 
 @Composable
-private fun PromptSuggestionChips(
-    video: Boolean,
-    enabled: Boolean,
-    onPick: (String) -> Unit
+private fun ChatSessionsSheet(
+    sessions: List<ChatSessionEntity>,
+    currentId: String,
+    onOpen: (String) -> Unit,
+    onNew: () -> Unit,
+    onRename: (String, String) -> Unit,
+    onDelete: (String) -> Unit
 ) {
-    val chips = if (video) {
-        listOf(
-            stringResource(R.string.chip_cat) to stringResource(R.string.chip_prompt_cat_video),
-            stringResource(R.string.chip_cinematic) to stringResource(R.string.chip_prompt_cinematic_video),
-            stringResource(R.string.chip_castle) to stringResource(R.string.chip_prompt_castle_video),
-            stringResource(R.string.chip_nature) to stringResource(R.string.chip_prompt_nature_video)
-        )
-    } else {
-        listOf(
-            stringResource(R.string.chip_cat) to stringResource(R.string.chip_prompt_cat),
-            stringResource(R.string.chip_cinematic) to stringResource(R.string.chip_prompt_cinematic),
-            stringResource(R.string.chip_castle) to stringResource(R.string.chip_prompt_castle),
-            stringResource(R.string.chip_nature) to stringResource(R.string.chip_prompt_nature)
-        )
-    }
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
-            .padding(start = 12.dp, end = 12.dp, bottom = 8.dp, top = 2.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        chips.forEach { (label, prompt) ->
-            SuggestionChip(
-                onClick = { onPick(prompt) },
-                enabled = enabled,
-                label = {
-                    Text(label, maxLines = 1, style = MaterialTheme.typography.labelMedium)
-                },
-                modifier = Modifier.height(32.dp)
+    Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
+        Text(stringResource(R.string.chats), color = SoftWhite, style = MaterialTheme.typography.titleLarge)
+        Spacer(Modifier.height(8.dp))
+        TextButton(onClick = onNew) {
+            Icon(Icons.Outlined.Edit, contentDescription = null, modifier = Modifier.size(18.dp), tint = ElectricBlue)
+            Spacer(Modifier.size(8.dp))
+            Text(stringResource(R.string.new_chat), color = ElectricBlue)
+        }
+        if (sessions.isEmpty()) {
+            Text(
+                text = stringResource(R.string.chat_untitled),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MutedGray,
+                modifier = Modifier.padding(vertical = 12.dp)
             )
-        }
-    }
-}
-
-@Composable
-private fun ChatComposer(
-    prompt: String,
-    onPromptChange: (String) -> Unit,
-    onClear: () -> Unit,
-    enabled: Boolean,
-    canSend: Boolean,
-    generateLabel: String,
-    onVoice: () -> Unit,
-    onSend: () -> Unit
-) {
-    Surface(
-        shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 4.dp)
-    ) {
-        Column(Modifier.padding(8.dp)) {
-            Row(verticalAlignment = Alignment.Bottom) {
-                IconButton(onClick = onVoice, enabled = enabled, modifier = Modifier.size(44.dp)) {
-                    Icon(Icons.Outlined.Mic, contentDescription = stringResource(R.string.voice_input), tint = PinkAccent)
-                }
-                BasicTextField(
-                    value = prompt,
-                    onValueChange = onPromptChange,
-                    enabled = enabled,
+        } else {
+            sessions.forEach { session ->
+                val active = session.id == currentId
+                Row(
                     modifier = Modifier
-                        .weight(1f)
-                        .padding(vertical = 12.dp),
-                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
-                    cursorBrush = SolidColor(PinkAccent),
-                    maxLines = 6,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default),
-                    keyboardActions = KeyboardActions(),
-                    decorationBox = { inner ->
-                        if (prompt.isEmpty()) {
-                            Text(
-                                text = stringResource(R.string.prompt_hint),
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        inner()
-                    }
-                )
-                if (prompt.isNotEmpty()) {
-                    IconButton(onClick = onClear, enabled = enabled, modifier = Modifier.size(40.dp)) {
-                        Icon(Icons.Outlined.Close, contentDescription = stringResource(R.string.clear_prompt))
-                    }
-                }
-            }
-            Surface(
-                onClick = onSend,
-                enabled = canSend,
-                shape = RoundedCornerShape(16.dp),
-                color = if (canSend) PinkAccent else PinkAccent.copy(alpha = 0.35f),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
+                        .fillMaxWidth()
+                        .padding(bottom = 4.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(if (active) ElectricBlue.copy(alpha = 0.16f) else Color.Transparent)
+                        .clickable { onOpen(session.id) }
+                        .padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Text(
-                        text = generateLabel,
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        fontWeight = FontWeight.SemiBold
+                        text = session.title.ifBlank { stringResource(R.string.chat_untitled) },
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+                        color = if (active) ElectricBlue else SoftWhite
                     )
+                    IconButton(onClick = { onRename(session.id, session.title) }, modifier = Modifier.size(40.dp)) {
+                        Icon(Icons.Outlined.Edit, contentDescription = stringResource(R.string.rename_chat), tint = MutedGray)
+                    }
+                    IconButton(onClick = { onDelete(session.id) }, modifier = Modifier.size(40.dp)) {
+                        Icon(Icons.Outlined.Delete, contentDescription = stringResource(R.string.delete_chat), tint = MutedGray)
+                    }
                 }
             }
         }
+        Spacer(Modifier.height(24.dp))
     }
 }
 
@@ -1102,18 +1285,18 @@ private fun CreditsSheet(
     onWatch: () -> Unit
 ) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp)) {
-        Text(stringResource(R.string.need_more_credits), style = MaterialTheme.typography.titleLarge)
+        Text(stringResource(R.string.need_more_credits), color = SoftWhite, style = MaterialTheme.typography.titleLarge)
         Spacer(Modifier.height(8.dp))
         Text(
             text = stringResource(R.string.credits_remaining, credits),
             style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = MutedGray
         )
         Spacer(Modifier.height(8.dp))
         Text(
             text = stringResource(R.string.watch_video_card_body, CreditConfig.REWARDED_VIDEO_REWARD),
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = MutedGray
         )
         Spacer(Modifier.height(20.dp))
         OutlinedButton(
@@ -1123,7 +1306,7 @@ private fun CreditsSheet(
             shape = RoundedCornerShape(16.dp)
         ) {
             if (loading) {
-                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = PinkAccent)
+                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = ElectricBlue)
                 Spacer(Modifier.size(10.dp))
                 Text(stringResource(R.string.ad_loading))
             } else {
@@ -1134,7 +1317,7 @@ private fun CreditsSheet(
         Text(
             text = stringResource(R.string.reward_note),
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = MutedGray
         )
         Spacer(Modifier.height(28.dp))
     }

@@ -264,5 +264,6 @@
     <string name="auth_error_google_cancelled">Google sign-in was cancelled.</string>
     <string name="auth_error_google_no_account">Add a Google account on this device and try again.</string>
     <string name="auth_error_google_config">Google sign-in isn\'t configured in Firebase yet.</string>
+    <string name="auth_error_google_sha">Google sign-in needs this app\'s SHA-1 in Firebase. Email login still works.</string>
     <string name="auth_error_generic">Couldn\'t sign in. Please try again.</string>
 </resources>

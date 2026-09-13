@@ -33,8 +33,8 @@ android {
         applicationId = "com.kolpona.ai"
         minSdk = 24
         targetSdk = 34
-        versionCode = 16
-        versionName = "1.8.1"
+        versionCode = 17
+        versionName = "1.9.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -53,6 +53,16 @@ android {
     }
 
     signingConfigs {
+        getByName("debug") {
+            val stable = rootProject.file("debug.keystore")
+            if (stable.exists()) {
+                storeFile = stable
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+                storeType = "PKCS12"
+            }
+        }
         create("release") {
             val storePath = (project.findProperty("RELEASE_STORE_FILE") as String?)
                 ?: System.getenv("RELEASE_STORE_FILE")

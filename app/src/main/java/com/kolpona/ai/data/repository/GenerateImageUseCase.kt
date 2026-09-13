@@ -56,7 +56,8 @@ class GenerateImageUseCase(
                     width = width,
                     height = height,
                     negativePrompt = optimized.negativePrompt,
-                    scene = optimized.kind
+                    scene = optimized.kind,
+                    quality = input.quality
                 )
             )
         } catch (e: GenerationException) {

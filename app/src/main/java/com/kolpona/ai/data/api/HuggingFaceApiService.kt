@@ -33,7 +33,7 @@ class HuggingFaceApiService(
             width = w,
             height = h,
             negativePrompt = negativePrompt.takeIf { supportsNegative },
-            steps = 4
+            steps = if (model.contains("FLUX.1-dev", ignoreCase = true)) 28 else 4
         )
     }
 
@@ -76,7 +76,6 @@ class HuggingFaceApiService(
                     return execute(url, body, media, expectVideo)
                 } catch (e: GenerationException) {
                     last = e
-                    if (e.error == GenerationError.NETWORK || e.error == GenerationError.TIMEOUT) throw e
                 }
             }
         }
@@ -124,13 +123,21 @@ class HuggingFaceApiService(
         } catch (e: GenerationException) {
             throw e
         } catch (_: SocketTimeoutException) {
-            throw GenerationException(GenerationError.TIMEOUT)
+            throw GenerationException(
+                if (expectVideo) GenerationError.VIDEO_UNAVAILABLE else GenerationError.TIMEOUT
+            )
         } catch (_: UnknownHostException) {
-            throw GenerationException(GenerationError.NETWORK)
+            throw GenerationException(
+                if (expectVideo) GenerationError.VIDEO_UNAVAILABLE else GenerationError.NETWORK
+            )
         } catch (_: IOException) {
-            throw GenerationException(GenerationError.NETWORK)
+            throw GenerationException(
+                if (expectVideo) GenerationError.VIDEO_UNAVAILABLE else GenerationError.SERVER
+            )
         } catch (_: Exception) {
-            throw GenerationException(GenerationError.UNKNOWN)
+            throw GenerationException(
+                if (expectVideo) GenerationError.VIDEO_UNAVAILABLE else GenerationError.UNKNOWN
+            )
         }
     }
 

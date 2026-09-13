@@ -1,6 +1,7 @@
 package com.kolpona.ai.data.api
 
 import com.kolpona.ai.domain.model.GenerationError
+import com.kolpona.ai.domain.model.ImageQuality
 import com.kolpona.ai.domain.model.MediaKind
 import com.kolpona.ai.prompt.SceneKind
 
@@ -10,7 +11,8 @@ data class MediaRequest(
     val width: Int,
     val height: Int,
     val negativePrompt: String? = null,
-    val scene: SceneKind = SceneKind.GENERAL
+    val scene: SceneKind = SceneKind.GENERAL,
+    val quality: ImageQuality = ImageQuality.HIGH
 )
 
 data class MediaBytes(
@@ -87,7 +89,11 @@ class GenerationRouter(
             ) { req ->
                 pollinations.generateImage(
                     prompt = req.prompt,
-                    model = PollinationsConfig.DEFAULT_MODEL,
+                    model = if (req.quality == ImageQuality.STANDARD) {
+                        PollinationsConfig.FAST_MODEL
+                    } else {
+                        PollinationsConfig.DEFAULT_MODEL
+                    },
                     width = req.width,
                     height = req.height
                 )
@@ -108,6 +114,23 @@ class GenerationRouter(
                         height = req.height,
                         negativePrompt = null,
                         model = HuggingFaceConfig.IMAGE_MODEL_PRIMARY
+                    )
+                }
+            )
+            add(
+                RoutedModel(
+                    id = HuggingFaceConfig.IMAGE_MODEL_DEV,
+                    media = MediaKind.IMAGE,
+                    promptAdherence = 4,
+                    photoreal = 5,
+                    supportsNegative = false
+                ) { req ->
+                    huggingFace.generateImage(
+                        prompt = req.prompt,
+                        width = req.width,
+                        height = req.height,
+                        negativePrompt = null,
+                        model = HuggingFaceConfig.IMAGE_MODEL_DEV
                     )
                 }
             )

@@ -57,22 +57,31 @@ class AuthViewModel(
 
     fun signInWithGoogle(activity: Activity, launchLegacy: (Intent) -> Unit) = launchAuth {
         when (val result = auth.signInWithGoogle(activity)) {
+            AuthOutcome.Success -> result
             is AuthOutcome.Failure -> {
-                if (result.resId == R.string.auth_error_google_no_account) {
+                if (result.resId == R.string.auth_error_google_cancelled ||
+                    result.resId == R.string.auth_error_not_configured ||
+                    result.resId == R.string.error_network
+                ) {
+                    result
+                } else {
                     val intent = auth.googleSignInIntent(activity)
                     if (intent != null) {
                         launchLegacy(intent)
-                        return@launchAuth AuthOutcome.ContinueGoogle
+                        AuthOutcome.ContinueGoogle
+                    } else {
+                        result
                     }
                 }
-                result
             }
             else -> result
         }
     }
 
-    fun handleGoogleIntent(data: Intent?) = launchAuth {
-        auth.handleGoogleIntent(data)
+    fun handleGoogleIntent(data: Intent?) {
+        viewModelScope.launch {
+            applyOutcome(auth.handleGoogleIntent(data))
+        }
     }
 
     fun clearMessages() {
@@ -83,19 +92,23 @@ class AuthViewModel(
         if (_state.value.loading) return
         viewModelScope.launch {
             _state.update { it.copy(loading = true, errorRes = null, infoRes = null) }
-            when (val result = block()) {
-                AuthOutcome.Success -> _state.update {
-                    it.copy(loading = false, signedIn = true, password = "", confirmPassword = "")
-                }
-                AuthOutcome.ContinueGoogle -> _state.update {
-                    it.copy(loading = false, errorRes = null, infoRes = null)
-                }
-                is AuthOutcome.Message -> _state.update {
-                    it.copy(loading = false, infoRes = result.resId, errorRes = null)
-                }
-                is AuthOutcome.Failure -> _state.update {
-                    it.copy(loading = false, errorRes = result.resId, signedIn = auth.isSignedIn())
-                }
+            applyOutcome(block())
+        }
+    }
+
+    private fun applyOutcome(result: AuthOutcome) {
+        when (result) {
+            AuthOutcome.Success -> _state.update {
+                it.copy(loading = false, signedIn = true, password = "", confirmPassword = "")
+            }
+            AuthOutcome.ContinueGoogle -> _state.update {
+                it.copy(loading = true, errorRes = null, infoRes = null)
+            }
+            is AuthOutcome.Message -> _state.update {
+                it.copy(loading = false, infoRes = result.resId, errorRes = null)
+            }
+            is AuthOutcome.Failure -> _state.update {
+                it.copy(loading = false, errorRes = result.resId, signedIn = auth.isSignedIn())
             }
         }
     }

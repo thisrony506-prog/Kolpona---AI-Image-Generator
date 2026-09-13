@@ -23,9 +23,9 @@ class PollinationsApiService(
 ) {
     private val videoClient: OkHttpClient = client.newBuilder()
         .connectTimeout(45, TimeUnit.SECONDS)
-        .readTimeout(150, TimeUnit.SECONDS)
+        .readTimeout(180, TimeUnit.SECONDS)
         .writeTimeout(45, TimeUnit.SECONDS)
-        .callTimeout(160, TimeUnit.SECONDS)
+        .callTimeout(200, TimeUnit.SECONDS)
         .build()
 
     suspend fun generateImage(
@@ -98,10 +98,12 @@ class PollinationsApiService(
                 return@withContext execute(url, expectVideo = true, http = videoClient)
             } catch (e: GenerationException) {
                 last = e
-                if (e.error == GenerationError.RATE_LIMIT || e.error == GenerationError.TIMEOUT) throw e
             }
         }
-        throw last ?: GenerationException(GenerationError.VIDEO_UNAVAILABLE)
+        throw when (last?.error) {
+            GenerationError.NETWORK -> GenerationException(GenerationError.VIDEO_UNAVAILABLE)
+            else -> last ?: GenerationException(GenerationError.VIDEO_UNAVAILABLE)
+        }
     }
 
     private fun videoAttempts(
@@ -252,13 +254,21 @@ class PollinationsApiService(
         } catch (e: GenerationException) {
             throw e
         } catch (_: SocketTimeoutException) {
-            throw GenerationException(GenerationError.TIMEOUT)
+            throw GenerationException(
+                if (expectVideo) GenerationError.VIDEO_UNAVAILABLE else GenerationError.TIMEOUT
+            )
         } catch (_: UnknownHostException) {
-            throw GenerationException(GenerationError.NETWORK)
+            throw GenerationException(
+                if (expectVideo) GenerationError.VIDEO_UNAVAILABLE else GenerationError.NETWORK
+            )
         } catch (_: IOException) {
-            throw GenerationException(GenerationError.NETWORK)
+            throw GenerationException(
+                if (expectVideo) GenerationError.VIDEO_UNAVAILABLE else GenerationError.SERVER
+            )
         } catch (_: Exception) {
-            throw GenerationException(GenerationError.UNKNOWN)
+            throw GenerationException(
+                if (expectVideo) GenerationError.VIDEO_UNAVAILABLE else GenerationError.UNKNOWN
+            )
         }
     }
 

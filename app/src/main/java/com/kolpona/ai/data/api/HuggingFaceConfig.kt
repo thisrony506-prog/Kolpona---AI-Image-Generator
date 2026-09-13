@@ -12,6 +12,7 @@ object HuggingFaceConfig {
     const val INFERENCE_BASE = "https://api-inference.huggingface.co/models"
 
     const val IMAGE_MODEL_PRIMARY = "black-forest-labs/FLUX.1-schnell"
+    const val IMAGE_MODEL_DEV = "black-forest-labs/FLUX.1-dev"
     const val IMAGE_MODEL_FALLBACK = "stabilityai/sdxl-turbo"
     const val VIDEO_MODEL = "Lightricks/LTX-Video"
     val VIDEO_MODELS: List<String> = listOf(

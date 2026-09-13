@@ -8,11 +8,14 @@ import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialCancellationException
+import androidx.credentials.exceptions.GetCredentialException
 import androidx.credentials.exceptions.NoCredentialException
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.ApiException
+import com.google.android.gms.common.api.CommonStatusCodes
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseNetworkException
@@ -113,6 +116,19 @@ class AuthRepository(
         if (!network.isOnline()) return AuthOutcome.Failure(R.string.error_network)
         val webClientId = webClientId()
         if (webClientId.isBlank()) return AuthOutcome.Failure(R.string.auth_error_google_config)
+        val manager = CredentialManager.create(activity)
+        val button = runCatching {
+            val option = GetSignInWithGoogleOption.Builder(webClientId).build()
+            val request = GetCredentialRequest.Builder().addCredentialOption(option).build()
+            withContext(Dispatchers.Main) { manager.getCredential(activity, request) }
+        }
+        button.getOrNull()?.let { result ->
+            return tokenFromCredential(auth, result.credential)
+        }
+        val buttonError = button.exceptionOrNull()
+        if (buttonError is GetCredentialCancellationException) {
+            return AuthOutcome.Failure(R.string.auth_error_google_cancelled)
+        }
         return try {
             val option = GetGoogleIdOption.Builder()
                 .setFilterByAuthorizedAccounts(false)
@@ -123,26 +139,18 @@ class AuthRepository(
                 .addCredentialOption(option)
                 .build()
             val result = withContext(Dispatchers.Main) {
-                CredentialManager.create(activity).getCredential(activity, request)
+                manager.getCredential(activity, request)
             }
-            val credential = result.credential
-            val idToken = when {
-                credential is CustomCredential &&
-                    credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL ->
-                    GoogleIdTokenCredential.createFrom(credential.data).idToken
-                else -> null
-            }
-            if (idToken.isNullOrBlank()) {
-                AuthOutcome.Failure(R.string.auth_error_google)
-            } else {
-                signInWithGoogleIdToken(auth, idToken)
-            }
+            tokenFromCredential(auth, result.credential)
         } catch (_: GetCredentialCancellationException) {
             AuthOutcome.Failure(R.string.auth_error_google_cancelled)
         } catch (_: NoCredentialException) {
             AuthOutcome.Failure(R.string.auth_error_google_no_account)
+        } catch (e: GetCredentialException) {
+            AuthOutcome.Failure(R.string.auth_error_google_no_account)
         } catch (e: Exception) {
-            mapException(e)
+            if (isDeveloperError(e)) AuthOutcome.Failure(R.string.auth_error_google_sha)
+            else AuthOutcome.Failure(R.string.auth_error_google_no_account)
         }
     }
 
@@ -166,8 +174,12 @@ class AuthRepository(
             if (idToken.isNullOrBlank()) AuthOutcome.Failure(R.string.auth_error_google)
             else signInWithGoogleIdToken(auth, idToken)
         } catch (e: ApiException) {
-            if (e.statusCode == 12501) AuthOutcome.Failure(R.string.auth_error_google_cancelled)
-            else AuthOutcome.Failure(R.string.auth_error_google)
+            when (e.statusCode) {
+                12501 -> AuthOutcome.Failure(R.string.auth_error_google_cancelled)
+                CommonStatusCodes.NETWORK_ERROR -> AuthOutcome.Failure(R.string.error_network)
+                CommonStatusCodes.DEVELOPER_ERROR, 10 -> AuthOutcome.Failure(R.string.auth_error_google_sha)
+                else -> AuthOutcome.Failure(R.string.auth_error_google)
+            }
         } catch (e: Exception) {
             mapException(e)
         }
@@ -187,12 +199,33 @@ class AuthRepository(
         }
     }
 
+    private suspend fun tokenFromCredential(
+        auth: FirebaseAuth,
+        credential: androidx.credentials.Credential
+    ): AuthOutcome {
+        val idToken = when {
+            credential is CustomCredential &&
+                credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL ->
+                GoogleIdTokenCredential.createFrom(credential.data).idToken
+            else -> null
+        }
+        return if (idToken.isNullOrBlank()) AuthOutcome.Failure(R.string.auth_error_google)
+        else signInWithGoogleIdToken(auth, idToken)
+    }
+
     private suspend fun signInWithGoogleIdToken(auth: FirebaseAuth, idToken: String): AuthOutcome =
         runAuth {
             val credential = GoogleAuthProvider.getCredential(idToken, null)
             auth.signInWithCredential(credential).await()
             AuthOutcome.Success
         }
+
+    private fun isDeveloperError(error: Throwable): Boolean {
+        val message = error.message.orEmpty()
+        return message.contains("10:") ||
+            message.contains("DEVELOPER_ERROR") ||
+            (error as? ApiException)?.statusCode == CommonStatusCodes.DEVELOPER_ERROR
+    }
 
     private fun requireAuth(): FirebaseAuth? = firebaseAuth
 
@@ -252,7 +285,16 @@ class AuthRepository(
 
     private fun webClientId(): String {
         val id = app.resources.getIdentifier("default_web_client_id", "string", app.packageName)
-        if (id == 0) return ""
-        return runCatching { app.getString(id) }.getOrNull().orEmpty()
+        val fromResources = if (id != 0) {
+            runCatching { app.getString(id) }.getOrNull().orEmpty()
+        } else {
+            ""
+        }
+        return fromResources.ifBlank { WEB_CLIENT_ID }
+    }
+
+    companion object {
+        private const val WEB_CLIENT_ID =
+            "727257597579-c89ss6i0iv81jq0095t6n11fi4g0812k.apps.googleusercontent.com"
     }
 }

@@ -3,6 +3,7 @@ package com.kolpona.app.ui.history
 import android.Manifest
 import android.os.Build
 import android.widget.Toast
+import android.widget.VideoView
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -39,6 +40,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
@@ -104,12 +106,27 @@ fun ImageViewerScreen(
             contentAlignment = Alignment.Center
         ) {
             if (image != null) {
-                AsyncImage(
-                    model = ImageRequest.Builder(context).data(File(image.localPath)).build(),
-                    contentDescription = stringResource(R.string.cd_generated_image),
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier.fillMaxSize()
-                )
+                if (image.isVideo) {
+                    AndroidView(
+                        modifier = Modifier.fillMaxSize().background(Color.Black),
+                        factory = { ctx ->
+                            VideoView(ctx).apply {
+                                setVideoPath(image.localPath)
+                                setOnPreparedListener { player ->
+                                    player.isLooping = true
+                                    start()
+                                }
+                            }
+                        }
+                    )
+                } else {
+                    AsyncImage(
+                        model = ImageRequest.Builder(context).data(File(image.localPath)).build(),
+                        contentDescription = stringResource(R.string.cd_generated_image),
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
             }
         }
         if (image != null) {

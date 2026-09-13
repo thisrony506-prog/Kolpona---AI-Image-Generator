@@ -9,6 +9,7 @@ import com.kolpona.app.domain.model.GeneratedImage
 import com.kolpona.app.domain.model.GenerationError
 import com.kolpona.app.domain.model.GenerationInput
 import com.kolpona.app.domain.model.GenerationOutcome
+import com.kolpona.app.domain.model.MediaKind
 import com.kolpona.app.utils.ImageFileStore
 import com.kolpona.app.utils.NetworkMonitor
 import com.kolpona.app.utils.PromptEnhancer
@@ -17,11 +18,6 @@ import kotlinx.coroutines.sync.withLock
 import java.util.UUID
 import kotlin.random.Random
 
-/**
- * Single pipeline for image generation.
- * Credits are deducted only after a successful save. The mutex plus generation id
- * guarantee exactly one -25 transaction per completed image.
- */
 class GenerateImageUseCase(
     private val api: PollinationsApiService,
     private val history: HistoryRepository,
@@ -46,24 +42,33 @@ class GenerateImageUseCase(
         }
 
         val generationId = UUID.randomUUID().toString()
-        val enhanced = enhancer.enhance(prompt, input.style, input.enhance)
+        val enhanced = enhancer.enhance(prompt, input.style, input.enhance, input.mediaType)
         val (width, height) = input.aspectRatio.dimensions(input.quality)
-        val model = input.modelId.ifBlank { PollinationsConfig.DEFAULT_MODEL }
+        val model = if (input.mediaType == MediaKind.VIDEO) {
+            PollinationsConfig.VIDEO_MODEL
+        } else {
+            input.modelId.ifBlank { PollinationsConfig.DEFAULT_MODEL }
+        }
 
         val bytes = try {
-            api.generateImage(
-                prompt = enhanced,
-                model = model,
-                width = width,
-                height = height,
-                seed = Random.nextInt(1, Int.MAX_VALUE)
-            )
+            if (input.mediaType == MediaKind.VIDEO) {
+                api.generateVideo(prompt = enhanced, width = width, height = height)
+            } else {
+                api.generateImage(
+                    prompt = enhanced,
+                    model = model,
+                    width = width,
+                    height = height,
+                    seed = Random.nextInt(1, Int.MAX_VALUE)
+                )
+            }
         } catch (e: GenerationException) {
             return GenerationOutcome.Failure(e.error)
         }
 
+        val extension = if (input.mediaType == MediaKind.VIDEO) "mp4" else "jpg"
         val path = try {
-            files.save(generationId, bytes)
+            files.save(generationId, bytes, extension)
         } catch (_: Exception) {
             return GenerationOutcome.Failure(GenerationError.UNKNOWN)
         }
@@ -79,7 +84,9 @@ class GenerateImageUseCase(
             height = height,
             localPath = path,
             createdAtEpochMs = System.currentTimeMillis(),
-            creditsUsed = CreditConfig.GENERATION_COST
+            creditsUsed = CreditConfig.GENERATION_COST,
+            mediaType = input.mediaType.id,
+            durationMs = if (input.mediaType == MediaKind.VIDEO) 5_000L else 0L
         )
 
         history.insert(image)

@@ -11,8 +11,10 @@ enum class AspectRatio(
     private val baseHeight: Int
 ) {
     SQUARE("1:1", R.string.ratio_square, "1:1", 1024, 1024),
-    PORTRAIT("4:5", R.string.ratio_portrait, "4:5", 832, 1040),
-    LANDSCAPE("16:9", R.string.ratio_landscape, "16:9", 1280, 720);
+    LANDSCAPE("16:9", R.string.ratio_landscape, "16:9", 1280, 720),
+    PORTRAIT_9_16("9:16", R.string.ratio_story, "9:16", 720, 1280),
+    CLASSIC("4:3", R.string.ratio_classic, "4:3", 1024, 768),
+    PORTRAIT("3:4", R.string.ratio_portrait, "3:4", 768, 1024);
 
     fun dimensions(quality: ImageQuality): Pair<Int, Int> {
         val w = ((baseWidth * quality.scale).toInt()).coerceAtLeast(512)
@@ -23,8 +25,10 @@ enum class AspectRatio(
     private fun align(value: Int): Int = value - (value % 8)
 
     companion object {
-        fun fromId(id: String): AspectRatio =
-            entries.find { it.id == id } ?: SQUARE
+        fun fromId(id: String): AspectRatio = when (id) {
+            "4:5" -> PORTRAIT
+            else -> entries.find { it.id == id } ?: SQUARE
+        }
     }
 }
 

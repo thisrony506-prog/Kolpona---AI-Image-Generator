@@ -26,7 +26,7 @@ class AppPreferences(context: Context) {
     val credits: Flow<Int> = dataStore.data.map { it[KEY_CREDITS] ?: CreditConfig.DAILY_INITIAL_CREDITS }
     val onboardingComplete: Flow<Boolean> = dataStore.data.map { it[KEY_ONBOARDING] ?: false }
     val themeMode: Flow<ThemeMode> = dataStore.data.map { ThemeMode.fromId(it[KEY_THEME] ?: ThemeMode.SYSTEM.name) }
-    val defaultStyle: Flow<ImageStyle> = dataStore.data.map { ImageStyle.fromId(it[KEY_STYLE] ?: ImageStyle.REALISTIC.id) }
+    val defaultStyle: Flow<ImageStyle> = dataStore.data.map { ImageStyle.fromId(it[KEY_STYLE] ?: ImageStyle.ALL.id) }
     val defaultAspectRatio: Flow<AspectRatio> = dataStore.data.map {
         AspectRatio.fromId(it[KEY_ASPECT] ?: AspectRatio.SQUARE.id)
     }

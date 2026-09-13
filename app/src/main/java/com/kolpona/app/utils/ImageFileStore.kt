@@ -8,8 +8,8 @@ import java.io.File
 class ImageFileStore(context: Context) {
     private val imagesDir: File = File(context.applicationContext.filesDir, "images").also { it.mkdirs() }
 
-    suspend fun save(id: String, bytes: ByteArray): String = withContext(Dispatchers.IO) {
-        val file = File(imagesDir, "$id.jpg")
+    suspend fun save(id: String, bytes: ByteArray, extension: String = "jpg"): String = withContext(Dispatchers.IO) {
+        val file = File(imagesDir, "$id.$extension")
         file.writeBytes(bytes)
         file.absolutePath
     }

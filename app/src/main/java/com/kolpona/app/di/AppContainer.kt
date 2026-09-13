@@ -30,9 +30,9 @@ class AppContainer(app: Application) {
 
     private val okHttpClient: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(120, TimeUnit.SECONDS)
+        .readTimeout(180, TimeUnit.SECONDS)
         .writeTimeout(30, TimeUnit.SECONDS)
-        .callTimeout(130, TimeUnit.SECONDS)
+        .callTimeout(190, TimeUnit.SECONDS)
         .addInterceptor(AuthInterceptor())
         .build()
 

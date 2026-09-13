@@ -21,8 +21,13 @@ class ImageShare(private val context: Context) {
             "${context.packageName}.fileprovider",
             shareFile
         )
+        val mime = when {
+            sourcePath.endsWith(".mp4", true) -> "video/mp4"
+            sourcePath.endsWith(".webm", true) -> "video/webm"
+            else -> "image/jpeg"
+        }
         val intent = Intent(Intent.ACTION_SEND).apply {
-            type = "image/jpeg"
+            type = mime
             putExtra(Intent.EXTRA_STREAM, uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }

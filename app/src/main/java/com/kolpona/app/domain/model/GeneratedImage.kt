@@ -1,5 +1,15 @@
 package com.kolpona.app.domain.model
 
+enum class MediaKind(val id: String) {
+    IMAGE("image"),
+    VIDEO("video");
+
+    companion object {
+        fun fromId(id: String): MediaKind =
+            entries.find { it.id == id } ?: IMAGE
+    }
+}
+
 data class GeneratedImage(
     val id: String,
     val prompt: String,
@@ -11,8 +21,12 @@ data class GeneratedImage(
     val height: Int,
     val localPath: String,
     val createdAtEpochMs: Long,
-    val creditsUsed: Int
-)
+    val creditsUsed: Int,
+    val mediaType: String = MediaKind.IMAGE.id,
+    val durationMs: Long = 0L
+) {
+    val isVideo: Boolean get() = mediaType == MediaKind.VIDEO.id
+}
 
 data class GenerationInput(
     val prompt: String,
@@ -20,7 +34,8 @@ data class GenerationInput(
     val aspectRatio: AspectRatio,
     val quality: ImageQuality,
     val modelId: String,
-    val enhance: Boolean
+    val enhance: Boolean,
+    val mediaType: MediaKind = MediaKind.IMAGE
 )
 
 sealed class GenerationOutcome {
@@ -38,6 +53,7 @@ enum class GenerationError {
     EMPTY_RESPONSE,
     INVALID_PROMPT,
     API,
+    VIDEO_UNAVAILABLE,
     UNKNOWN
 }
 

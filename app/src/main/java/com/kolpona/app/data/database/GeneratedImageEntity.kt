@@ -3,6 +3,7 @@ package com.kolpona.app.data.database
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import com.kolpona.app.domain.model.GeneratedImage
+import com.kolpona.app.domain.model.MediaKind
 
 @Entity(tableName = "generated_images")
 data class GeneratedImageEntity(
@@ -16,7 +17,9 @@ data class GeneratedImageEntity(
     val height: Int,
     val localPath: String,
     val createdAtEpochMs: Long,
-    val creditsUsed: Int
+    val creditsUsed: Int,
+    val mediaType: String = MediaKind.IMAGE.id,
+    val durationMs: Long = 0L
 ) {
     fun toModel(): GeneratedImage = GeneratedImage(
         id = id,
@@ -29,7 +32,9 @@ data class GeneratedImageEntity(
         height = height,
         localPath = localPath,
         createdAtEpochMs = createdAtEpochMs,
-        creditsUsed = creditsUsed
+        creditsUsed = creditsUsed,
+        mediaType = mediaType,
+        durationMs = durationMs
     )
 
     companion object {
@@ -44,7 +49,9 @@ data class GeneratedImageEntity(
             height = model.height,
             localPath = model.localPath,
             createdAtEpochMs = model.createdAtEpochMs,
-            creditsUsed = model.creditsUsed
+            creditsUsed = model.creditsUsed,
+            mediaType = model.mediaType,
+            durationMs = model.durationMs
         )
     }
 }

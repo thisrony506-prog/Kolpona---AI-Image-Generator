@@ -14,6 +14,7 @@ import com.kolpona.app.domain.model.GenerationError
 import com.kolpona.app.domain.model.GenerationInput
 import com.kolpona.app.domain.model.GenerationOutcome
 import com.kolpona.app.domain.model.ImageStyle
+import com.kolpona.app.domain.model.MediaKind
 import com.kolpona.app.utils.ImageSaver
 import com.kolpona.app.utils.ImageShare
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -81,7 +82,10 @@ class ResultViewModel(
         val current = image.value ?: return
         viewModelScope.launch {
             runCatching {
-                saver.saveToGallery(current.localPath, "Kolpona_${current.id.take(8)}.jpg")
+                saver.saveToGallery(
+                    current.localPath,
+                    if (current.isVideo) "Kolpona_${current.id.take(8)}.mp4" else "Kolpona_${current.id.take(8)}.jpg"
+                )
             }.onSuccess { _events.emit(ResultEvent.Saved) }
                 .onFailure { _events.emit(ResultEvent.SaveFailed) }
         }
@@ -106,7 +110,8 @@ class ResultViewModel(
                     aspectRatio = AspectRatio.fromId(current.aspectRatioId),
                     quality = quality,
                     modelId = current.model,
-                    enhance = enhance
+                    enhance = enhance,
+                    mediaType = MediaKind.fromId(current.mediaType)
                 )
             )
             when (outcome) {

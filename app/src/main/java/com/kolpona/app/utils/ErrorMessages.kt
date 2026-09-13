@@ -13,6 +13,7 @@ fun GenerationError.messageRes(): Int = when (this) {
     GenerationError.RATE_LIMIT -> R.string.error_rate_limit
     GenerationError.EMPTY_RESPONSE -> R.string.error_empty_response
     GenerationError.API -> R.string.error_api
+    GenerationError.VIDEO_UNAVAILABLE -> R.string.error_video
     GenerationError.UNKNOWN -> R.string.error_generic
 }
 

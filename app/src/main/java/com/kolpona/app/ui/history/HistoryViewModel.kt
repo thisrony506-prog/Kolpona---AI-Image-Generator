@@ -12,6 +12,7 @@ import com.kolpona.app.domain.model.GenerationError
 import com.kolpona.app.domain.model.GenerationInput
 import com.kolpona.app.domain.model.GenerationOutcome
 import com.kolpona.app.domain.model.ImageStyle
+import com.kolpona.app.domain.model.MediaKind
 import com.kolpona.app.utils.ImageSaver
 import com.kolpona.app.utils.ImageShare
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -56,7 +57,10 @@ class HistoryViewModel(
     fun download(image: GeneratedImage) {
         viewModelScope.launch {
             runCatching {
-                saver.saveToGallery(image.localPath, "Kolpona_${image.id.take(8)}.jpg")
+                saver.saveToGallery(
+                    image.localPath,
+                    if (image.isVideo) "Kolpona_${image.id.take(8)}.mp4" else "Kolpona_${image.id.take(8)}.jpg"
+                )
             }.onSuccess { _events.emit(HistoryEvent.Saved) }
                 .onFailure { _events.emit(HistoryEvent.SaveFailed) }
         }
@@ -79,7 +83,8 @@ class HistoryViewModel(
                     aspectRatio = AspectRatio.fromId(image.aspectRatioId),
                     quality = quality,
                     modelId = image.model,
-                    enhance = enhance
+                    enhance = enhance,
+                    mediaType = MediaKind.fromId(image.mediaType)
                 )
             )
             _generating.value = false

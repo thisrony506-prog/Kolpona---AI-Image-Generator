@@ -11,9 +11,12 @@ import com.kolpona.app.BuildConfig
 object PollinationsConfig {
     const val API_BASE_URL = "https://gen.pollinations.ai"
     const val IMAGE_PATH = "image"
+    const val VIDEO_PATH = "video"
     const val FALLBACK_BASE_URL = "https://image.pollinations.ai"
     const val FALLBACK_PATH = "prompt"
+    const val VIDEO_FALLBACK_BASE_URL = "https://video.pollinations.ai"
     const val DEFAULT_MODEL = "flux"
+    const val VIDEO_MODEL = "veo"
 
     val apiKey: String
         get() = BuildConfig.POLLINATIONS_API_KEY

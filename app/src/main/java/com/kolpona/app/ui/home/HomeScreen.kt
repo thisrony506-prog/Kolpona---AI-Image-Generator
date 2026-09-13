@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
 package com.kolpona.app.ui.home
 
 import android.Manifest
@@ -8,11 +10,12 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.speech.RecognizerIntent
 import android.widget.Toast
+import android.widget.VideoView
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,28 +31,29 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.FileDownload
+import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.Mic
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.Videocam
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledIconButton
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -59,6 +63,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -69,6 +74,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -81,16 +87,18 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.kolpona.app.R
-import com.kolpona.app.ads.StartIoBanner
 import com.kolpona.app.domain.manager.CreditConfig
 import com.kolpona.app.domain.model.AspectRatio
 import com.kolpona.app.domain.model.GeneratedImage
 import com.kolpona.app.domain.model.GenerationError
 import com.kolpona.app.domain.model.ImageStyle
+import com.kolpona.app.domain.model.MediaKind
 import com.kolpona.app.ui.components.KolponaMark
 import com.kolpona.app.ui.theme.PinkAccent
 import com.kolpona.app.utils.formatArgs
@@ -98,7 +106,7 @@ import com.kolpona.app.utils.messageRes
 import java.io.File
 import java.util.Locale
 
-private enum class ChatToolTab { Category, Ratio }
+private enum class OptionSheet { None, Category, Ratio }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -113,10 +121,9 @@ fun HomeScreen(
     val activity = context as? Activity
     val keyboard = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
-    val chatItems = state.chatItems()
     val listState = rememberLazyListState()
     var showCreditsSheet by rememberSaveable { mutableStateOf(false) }
-    var toolTab by rememberSaveable { mutableStateOf(ChatToolTab.Category) }
+    var optionSheet by rememberSaveable { mutableStateOf(OptionSheet.None) }
 
     val voiceLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -141,14 +148,7 @@ fun HomeScreen(
     ) { granted ->
         if (granted) {
             try {
-                voiceLauncher.launch(
-                    Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                        putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                        putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
-                        putExtra(RecognizerIntent.EXTRA_PROMPT, context.getString(R.string.voice_prompt))
-                        putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
-                    }
-                )
+                voiceLauncher.launch(speechIntent(context.getString(R.string.voice_prompt)))
             } catch (_: ActivityNotFoundException) {
                 Toast.makeText(context, context.getString(R.string.voice_unavailable), Toast.LENGTH_LONG).show()
             }
@@ -172,11 +172,7 @@ fun HomeScreen(
                     ).show()
                 }
                 HomeEvent.AdUnavailable -> {
-                    Toast.makeText(
-                        context,
-                        context.getString(R.string.error_ad_unavailable),
-                        Toast.LENGTH_LONG
-                    ).show()
+                    Toast.makeText(context, context.getString(R.string.error_ad_unavailable), Toast.LENGTH_LONG).show()
                 }
                 HomeEvent.NeedCredits -> showCreditsSheet = true
                 HomeEvent.ShowInterstitial -> activity?.let { viewModel.adManager.showInterstitial(it) }
@@ -186,9 +182,9 @@ fun HomeScreen(
         }
     }
 
-    LaunchedEffect(chatItems.size, state.isGenerating) {
-        if (chatItems.isNotEmpty()) {
-            listState.animateScrollToItem(chatItems.lastIndex)
+    LaunchedEffect(state.messages.size, state.isGenerating) {
+        if (state.messages.isNotEmpty()) {
+            listState.animateScrollToItem(state.messages.lastIndex)
         }
     }
 
@@ -203,14 +199,7 @@ fun HomeScreen(
             PackageManager.PERMISSION_GRANTED
         if (granted) {
             try {
-                voiceLauncher.launch(
-                    Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                        putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                        putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
-                        putExtra(RecognizerIntent.EXTRA_PROMPT, context.getString(R.string.voice_prompt))
-                        putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
-                    }
-                )
+                voiceLauncher.launch(speechIntent(context.getString(R.string.voice_prompt)))
             } catch (_: ActivityNotFoundException) {
                 Toast.makeText(context, context.getString(R.string.voice_unavailable), Toast.LENGTH_LONG).show()
             }
@@ -224,106 +213,158 @@ fun HomeScreen(
             .fillMaxSize()
             .imePadding()
     ) {
-    Column(
-        modifier = Modifier.fillMaxSize()
-    ) {
-        ChatHeader(
-            credits = state.credits,
-            onCredits = { showCreditsSheet = true },
-            onSettings = onOpenSettings
-        )
-
-        if (chatItems.isEmpty()) {
-            EmptyChat(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth(),
-                onSuggestion = { viewModel.sendSuggestion(it) }
+        Column(Modifier.fillMaxSize()) {
+            ChatHeader(
+                credits = state.credits,
+                onCredits = { showCreditsSheet = true },
+                onNewChat = viewModel::newChat,
+                onSettings = onOpenSettings
             )
-        } else {
-            LazyColumn(
-                state = listState,
+
+            if (state.messages.isEmpty()) {
+                EmptyChat(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    onSuggestion = viewModel::onPromptChange
+                )
+            } else {
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    items(state.messages, key = { it.key }) { item ->
+                        when (item) {
+                            is ChatItem.User -> UserBubble(item.text)
+                            is ChatItem.AssistantText -> AssistantTextBubble(item.text)
+                            is ChatItem.Image -> ResultCard(
+                                image = item.image,
+                                onOpen = { onOpenImage(item.image.id) },
+                                onDownload = {
+                                    if (Build.VERSION.SDK_INT < 29) {
+                                        storagePermission.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                                    }
+                                    viewModel.download(item.image)
+                                },
+                                onShare = { viewModel.share(item.image, context.getString(R.string.share_image)) },
+                                onRegenerate = { viewModel.regenerate(item.image) },
+                                onVariation = { viewModel.variation(item.image) },
+                                enabled = !state.isGenerating
+                            )
+                            is ChatItem.Pending -> PendingBubble(video = state.mediaType == MediaKind.VIDEO)
+                            is ChatItem.Error -> ErrorBubble(error = item.error, onRetry = viewModel::retry)
+                        }
+                    }
+                }
+            }
+
+            MediaTypeSelector(
+                selected = state.mediaType,
+                onSelect = viewModel::onMediaType,
+                enabled = !state.isGenerating
+            )
+
+            Row(
                 modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth(),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(chatItems, key = { it.key }) { item ->
-                    when (item) {
-                        is ChatItem.User -> UserBubble(item.text)
-                        is ChatItem.Image -> AssistantImageBubble(
-                            image = item.image,
-                            onOpen = { onOpenImage(item.image.id) },
-                            onDownload = {
-                                if (Build.VERSION.SDK_INT < 29) {
-                                    storagePermission.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
-                                }
-                                viewModel.download(item.image)
-                            },
-                            onShare = { viewModel.share(item.image, context.getString(R.string.share_image)) }
+                OptionPill(
+                    label = stringResource(R.string.category),
+                    value = stringResource(state.style.labelRes),
+                    onClick = { optionSheet = OptionSheet.Category },
+                    modifier = Modifier.weight(1f),
+                    enabled = !state.isGenerating
+                )
+                OptionPill(
+                    label = stringResource(R.string.ratio),
+                    value = state.aspectRatio.shortLabel,
+                    onClick = { optionSheet = OptionSheet.Ratio },
+                    modifier = Modifier.weight(1f),
+                    enabled = !state.isGenerating
+                )
+            }
+
+            ChatComposer(
+                prompt = state.prompt,
+                onPromptChange = viewModel::onPromptChange,
+                onClear = viewModel::clearPrompt,
+                enabled = !state.isGenerating,
+                canSend = state.prompt.isNotBlank() && !state.isGenerating,
+                generateLabel = stringResource(
+                    if (state.mediaType == MediaKind.VIDEO) R.string.generate_video_short
+                    else R.string.generate_image_short
+                ),
+                onVoice = { startVoice() },
+                onSend = { send() }
+            )
+
+            PromptSuggestionChips(
+                video = state.mediaType == MediaKind.VIDEO,
+                enabled = !state.isGenerating,
+                onPick = viewModel::onPromptChange
+            )
+        }
+
+        if (state.watchingAd) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.45f))
+                    .clickable(enabled = false, onClick = {}),
+                contentAlignment = Alignment.Center
+            ) {
+                Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 22.dp, vertical = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(22.dp),
+                            strokeWidth = 2.dp,
+                            color = PinkAccent
                         )
-                        is ChatItem.Pending -> PendingBubble()
-                        is ChatItem.Error -> ErrorBubble(
-                            error = item.error,
-                            onRetry = viewModel::retry
-                        )
+                        Spacer(Modifier.size(12.dp))
+                        Text(stringResource(R.string.ad_loading))
                     }
                 }
             }
         }
-
-        ChatToolTabs(
-            tab = toolTab,
-            onTab = { toolTab = it },
-            style = state.style,
-            onStyle = viewModel::onStyleSelected,
-            aspectRatio = state.aspectRatio,
-            onAspect = viewModel::onAspectSelected,
-            enabled = !state.isGenerating
-        )
-
-        ChatComposer(
-            prompt = state.prompt,
-            onPromptChange = viewModel::onPromptChange,
-            enabled = !state.isGenerating,
-            canSend = state.prompt.isNotBlank() && !state.isGenerating,
-            onVoice = { startVoice() },
-            onSend = { send() }
-        )
-
-        PromptSuggestionChips(
-            enabled = !state.isGenerating,
-            onPick = viewModel::onPromptChange
-        )
-
-        StartIoBanner(adManager = viewModel.adManager)
     }
 
-    if (state.watchingAd) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.45f))
-                .clickable(enabled = false, onClick = {}),
-            contentAlignment = Alignment.Center
+    if (optionSheet != OptionSheet.None) {
+        ModalBottomSheet(
+            onDismissRequest = { optionSheet = OptionSheet.None },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = MaterialTheme.colorScheme.surface
         ) {
-            Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 22.dp, vertical = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(22.dp),
-                        strokeWidth = 2.dp,
-                        color = PinkAccent
-                    )
-                    Spacer(Modifier.size(12.dp))
-                    Text(stringResource(R.string.ad_loading))
-                }
+            when (optionSheet) {
+                OptionSheet.Category -> OptionList(
+                    title = stringResource(R.string.category),
+                    options = ImageStyle.entries.map { stringResource(it.labelRes) to it },
+                    selected = state.style,
+                    onPick = {
+                        viewModel.onStyleSelected(it)
+                        optionSheet = OptionSheet.None
+                    }
+                )
+                OptionSheet.Ratio -> OptionList(
+                    title = stringResource(R.string.ratio),
+                    options = AspectRatio.entries.map { it.shortLabel to it },
+                    selected = state.aspectRatio,
+                    onPick = {
+                        viewModel.onAspectSelected(it)
+                        optionSheet = OptionSheet.None
+                    }
+                )
+                OptionSheet.None -> Unit
             }
         }
-    }
     }
 
     if (showCreditsSheet) {
@@ -362,13 +403,26 @@ fun HomeScreen(
     }
 }
 
+private fun speechIntent(prompt: String): Intent =
+    Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+        putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+        putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+        putExtra(RecognizerIntent.EXTRA_PROMPT, prompt)
+        putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+    }
+
 @Composable
-private fun ChatHeader(credits: Int, onCredits: () -> Unit, onSettings: () -> Unit) {
+private fun ChatHeader(
+    credits: Int,
+    onCredits: () -> Unit,
+    onNewChat: () -> Unit,
+    onSettings: () -> Unit
+) {
     val creditsDesc = stringResource(R.string.cd_credits)
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         KolponaMark(size = 36.dp)
@@ -393,10 +447,7 @@ private fun ChatHeader(credits: Int, onCredits: () -> Unit, onSettings: () -> Un
                 .clickable(onClick = onCredits)
                 .semantics { contentDescription = creditsDesc }
         ) {
-            Box(
-                modifier = Modifier.padding(horizontal = 12.dp),
-                contentAlignment = Alignment.Center
-            ) {
+            Box(Modifier.padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
                 Text(
                     text = stringResource(R.string.credits_count, credits),
                     color = PinkAccent,
@@ -405,11 +456,11 @@ private fun ChatHeader(credits: Int, onCredits: () -> Unit, onSettings: () -> Un
                 )
             }
         }
-        IconButton(onClick = onSettings, modifier = Modifier.size(48.dp)) {
-            Icon(
-                imageVector = Icons.Outlined.Settings,
-                contentDescription = stringResource(R.string.cd_settings)
-            )
+        IconButton(onClick = onNewChat, modifier = Modifier.size(44.dp)) {
+            Icon(Icons.Outlined.Edit, contentDescription = stringResource(R.string.cd_new_chat))
+        }
+        IconButton(onClick = onSettings, modifier = Modifier.size(44.dp)) {
+            Icon(Icons.Outlined.Settings, contentDescription = stringResource(R.string.cd_settings))
         }
     }
 }
@@ -419,8 +470,7 @@ private fun EmptyChat(onSuggestion: (String) -> Unit, modifier: Modifier = Modif
     val suggestions = listOf(
         stringResource(R.string.chat_suggest_1),
         stringResource(R.string.chat_suggest_2),
-        stringResource(R.string.chat_suggest_3),
-        stringResource(R.string.chat_suggest_4)
+        stringResource(R.string.chat_suggest_3)
     )
     Column(
         modifier = modifier.padding(horizontal = 24.dp),
@@ -442,28 +492,21 @@ private fun EmptyChat(onSuggestion: (String) -> Unit, modifier: Modifier = Modif
             textAlign = TextAlign.Center
         )
         Spacer(Modifier.height(24.dp))
-        suggestions.chunked(2).forEach { row ->
-            Row(
+        suggestions.forEach { text ->
+            SuggestionChip(
+                onClick = { onSuggestion(text) },
+                label = {
+                    Text(
+                        text = text,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                row.forEach { text ->
-                    SuggestionChip(
-                        onClick = { onSuggestion(text) },
-                        label = {
-                            Text(
-                                text = text,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                        },
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-            }
+                    .padding(bottom = 8.dp)
+            )
         }
     }
 }
@@ -487,53 +530,103 @@ private fun UserBubble(text: String) {
 }
 
 @Composable
-private fun AssistantImageBubble(
+private fun AssistantTextBubble(text: String) {
+    Row(modifier = Modifier.fillMaxWidth()) {
+        KolponaMark(size = 28.dp)
+        Spacer(Modifier.size(8.dp))
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            modifier = Modifier.widthIn(max = 320.dp)
+        ) {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun ResultCard(
     image: GeneratedImage,
     onOpen: () -> Unit,
     onDownload: () -> Unit,
-    onShare: () -> Unit
+    onShare: () -> Unit,
+    onRegenerate: () -> Unit,
+    onVariation: () -> Unit,
+    enabled: Boolean
 ) {
-    val ratio = (image.width.toFloat() / image.height.coerceAtLeast(1).toFloat()).coerceIn(0.6f, 1.8f)
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.Start,
-        verticalAlignment = Alignment.Top
-    ) {
+    val ratio = (image.width.toFloat() / image.height.coerceAtLeast(1).toFloat()).coerceIn(0.5f, 1.9f)
+    val category = ImageStyle.fromId(image.styleId)
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
         KolponaMark(size = 28.dp)
         Spacer(Modifier.size(8.dp))
-        Column(modifier = Modifier.widthIn(max = 320.dp)) {
-            Text(
-                text = stringResource(R.string.chat_image_ready),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
-            AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current)
-                    .data(File(image.localPath))
-                    .crossfade(true)
-                    .build(),
-                contentDescription = stringResource(R.string.cd_generated_image),
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(ratio)
-                    .clip(RoundedCornerShape(20.dp))
-                    .clickable(onClick = onOpen)
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                TextButton(onClick = onDownload, modifier = Modifier.height(44.dp)) {
-                    Icon(Icons.Outlined.FileDownload, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.size(6.dp))
-                    Text(stringResource(R.string.download))
+        Surface(
+            shape = RoundedCornerShape(22.dp),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 2.dp,
+            modifier = Modifier.widthIn(max = 340.dp)
+        ) {
+            Column(Modifier.padding(10.dp)) {
+                Text(
+                    text = stringResource(if (image.isVideo) R.string.chat_video_ready else R.string.chat_image_ready),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                if (image.isVideo) {
+                    LoopingVideo(
+                        path = image.localPath,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(ratio)
+                            .clip(RoundedCornerShape(16.dp))
+                            .clickable(onClick = onOpen)
+                    )
+                } else {
+                    AsyncImage(
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(File(image.localPath))
+                            .crossfade(true)
+                            .build(),
+                        contentDescription = stringResource(R.string.cd_generated_image),
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(ratio)
+                            .clip(RoundedCornerShape(16.dp))
+                            .clickable(onClick = onOpen)
+                    )
                 }
-                TextButton(onClick = onShare, modifier = Modifier.height(44.dp)) {
-                    Icon(Icons.Outlined.Share, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.size(6.dp))
-                    Text(stringResource(R.string.share))
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = image.prompt,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = stringResource(R.string.meta_category, stringResource(category.labelRes)) +
+                        "  ·  " +
+                        stringResource(R.string.meta_ratio, image.aspectRatioId) +
+                        if (image.isVideo) "  ·  " + stringResource(R.string.duration_seconds, 5) else "",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(0.dp)
+                ) {
+                    CardAction(Icons.Outlined.FileDownload, stringResource(R.string.download), onDownload, enabled)
+                    CardAction(Icons.Outlined.Share, stringResource(R.string.share), onShare, enabled)
+                    CardAction(Icons.Outlined.Refresh, stringResource(R.string.regenerate), onRegenerate, enabled)
+                    if (!image.isVideo) {
+                        CardAction(Icons.Outlined.AutoAwesome, stringResource(R.string.variation), onVariation, enabled)
+                    }
                 }
             }
         }
@@ -541,29 +634,45 @@ private fun AssistantImageBubble(
 }
 
 @Composable
-private fun PendingBubble() {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
+private fun CardAction(icon: ImageVector, label: String, onClick: () -> Unit, enabled: Boolean) {
+    TextButton(onClick = onClick, enabled = enabled, modifier = Modifier.height(40.dp)) {
+        Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp))
+        Spacer(Modifier.size(4.dp))
+        Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+    }
+}
+
+@Composable
+private fun LoopingVideo(path: String, modifier: Modifier = Modifier) {
+    DisposableEffect(path) { onDispose { } }
+    AndroidView(
+        modifier = modifier.background(Color.Black),
+        factory = { ctx ->
+            VideoView(ctx).apply {
+                setVideoPath(path)
+                setOnPreparedListener { player ->
+                    player.isLooping = true
+                    start()
+                }
+            }
+        }
+    )
+}
+
+@Composable
+private fun PendingBubble(video: Boolean) {
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         KolponaMark(size = 28.dp)
         Spacer(Modifier.size(8.dp))
-        Surface(
-            shape = RoundedCornerShape(20.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant
-        ) {
+        Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
             Row(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(18.dp),
-                    strokeWidth = 2.dp,
-                    color = PinkAccent
-                )
+                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = PinkAccent)
                 Spacer(Modifier.size(10.dp))
                 Text(
-                    text = stringResource(R.string.creating_image),
+                    text = stringResource(if (video) R.string.creating_video else R.string.creating_image),
                     style = MaterialTheme.typography.bodyLarge
                 )
             }
@@ -574,11 +683,7 @@ private fun PendingBubble() {
 @Composable
 private fun ErrorBubble(error: GenerationError, onRetry: () -> Unit) {
     val args = error.formatArgs()
-    val message = if (args != null) {
-        stringResource(error.messageRes(), *args)
-    } else {
-        stringResource(error.messageRes())
-    }
+    val message = if (args != null) stringResource(error.messageRes(), *args) else stringResource(error.messageRes())
     Row(modifier = Modifier.fillMaxWidth()) {
         KolponaMark(size = 28.dp)
         Spacer(Modifier.size(8.dp))
@@ -600,122 +705,160 @@ private fun ErrorBubble(error: GenerationError, onRetry: () -> Unit) {
 }
 
 @Composable
-private fun ChatToolTabs(
-    tab: ChatToolTab,
-    onTab: (ChatToolTab) -> Unit,
-    style: ImageStyle,
-    onStyle: (ImageStyle) -> Unit,
-    aspectRatio: AspectRatio,
-    onAspect: (AspectRatio) -> Unit,
+private fun MediaTypeSelector(
+    selected: MediaKind,
+    onSelect: (MediaKind) -> Unit,
     enabled: Boolean
 ) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        shape = RoundedCornerShape(22.dp),
+            .padding(horizontal = 12.dp, vertical = 4.dp),
+        shape = RoundedCornerShape(18.dp),
         color = MaterialTheme.colorScheme.surfaceVariant
     ) {
-        Column(Modifier.padding(8.dp)) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(MaterialTheme.colorScheme.background)
-            ) {
-                ToolTab(
-                    label = stringResource(R.string.tab_category),
-                    selected = tab == ChatToolTab.Category,
-                    onClick = { onTab(ChatToolTab.Category) },
-                    modifier = Modifier.weight(1f)
-                )
-                ToolTab(
-                    label = stringResource(R.string.tab_ratio),
-                    selected = tab == ChatToolTab.Ratio,
-                    onClick = { onTab(ChatToolTab.Ratio) },
-                    modifier = Modifier.weight(1f)
-                )
-            }
-            Spacer(Modifier.height(10.dp))
-            when (tab) {
-                ChatToolTab.Category -> {
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(ImageStyle.entries.toList(), key = { it.id }) { item ->
-                            FilterChip(
-                                selected = item == style,
-                                onClick = { onStyle(item) },
-                                enabled = enabled,
-                                label = { Text(stringResource(item.labelRes)) },
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = PinkAccent,
-                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary
-                                )
-                            )
-                        }
-                    }
-                }
-                ChatToolTab.Ratio -> {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        AspectRatio.entries.forEach { ratio ->
-                            FilterChip(
-                                selected = ratio == aspectRatio,
-                                onClick = { onAspect(ratio) },
-                                enabled = enabled,
-                                modifier = Modifier.weight(1f),
-                                label = { Text(ratio.shortLabel) },
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = PinkAccent,
-                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary
-                                )
-                            )
-                        }
-                    }
-                }
-            }
+        Row(Modifier.padding(4.dp)) {
+            MediaTab(
+                label = stringResource(R.string.media_image),
+                icon = Icons.Outlined.Image,
+                selected = selected == MediaKind.IMAGE,
+                onClick = { onSelect(MediaKind.IMAGE) },
+                enabled = enabled,
+                modifier = Modifier.weight(1f)
+            )
+            MediaTab(
+                label = stringResource(R.string.media_video),
+                icon = Icons.Outlined.Videocam,
+                selected = selected == MediaKind.VIDEO,
+                onClick = { onSelect(MediaKind.VIDEO) },
+                enabled = enabled,
+                modifier = Modifier.weight(1f)
+            )
         }
     }
 }
 
 @Composable
-private fun ToolTab(
+private fun MediaTab(
     label: String,
+    icon: ImageVector,
     selected: Boolean,
     onClick: () -> Unit,
+    enabled: Boolean,
     modifier: Modifier = Modifier
 ) {
     Box(
         modifier = modifier
-            .height(40.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .background(if (selected) PinkAccent else MaterialTheme.colorScheme.background)
-            .clickable(onClick = onClick),
+            .height(42.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(if (selected) PinkAccent else Color.Transparent)
+            .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            text = label,
-            color = if (selected) MaterialTheme.colorScheme.onPrimary
-            else MaterialTheme.colorScheme.onSurface,
-            fontWeight = FontWeight.SemiBold,
-            style = MaterialTheme.typography.labelLarge
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+                tint = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(Modifier.size(6.dp))
+            Text(
+                text = label,
+                color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.SemiBold,
+                style = MaterialTheme.typography.labelLarge
+            )
+        }
+    }
+}
+
+@Composable
+private fun OptionPill(
+    label: String,
+    value: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean
+) {
+    Surface(
+        onClick = onClick,
+        enabled = enabled,
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        modifier = modifier.height(44.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(value, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            }
+            Icon(Icons.Outlined.KeyboardArrowDown, contentDescription = null, modifier = Modifier.size(18.dp))
+        }
+    }
+}
+
+@Composable
+private fun <T> OptionList(
+    title: String,
+    options: List<Pair<String, T>>,
+    selected: T,
+    onPick: (T) -> Unit
+) {
+    Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
+        Text(title, style = MaterialTheme.typography.titleLarge)
+        Spacer(Modifier.height(12.dp))
+        options.forEach { (label, value) ->
+            val active = value == selected
+            Surface(
+                onClick = { onPick(value) },
+                shape = RoundedCornerShape(14.dp),
+                color = if (active) PinkAccent.copy(alpha = 0.16f) else Color.Transparent,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 6.dp)
+            ) {
+                Text(
+                    text = label,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                    fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+                    color = if (active) PinkAccent else MaterialTheme.colorScheme.onSurface
+                )
+            }
+        }
+        Spacer(Modifier.height(24.dp))
     }
 }
 
 @Composable
 private fun PromptSuggestionChips(
+    video: Boolean,
     enabled: Boolean,
     onPick: (String) -> Unit
 ) {
-    val chips = listOf(
-        stringResource(R.string.chip_cat) to stringResource(R.string.chip_prompt_cat),
-        stringResource(R.string.chip_cinematic) to stringResource(R.string.chip_prompt_cinematic),
-        stringResource(R.string.chip_castle) to stringResource(R.string.chip_prompt_castle),
-        stringResource(R.string.chip_nature) to stringResource(R.string.chip_prompt_nature)
-    )
+    val chips = if (video) {
+        listOf(
+            stringResource(R.string.chip_cat) to stringResource(R.string.chip_prompt_cat_video),
+            stringResource(R.string.chip_cinematic) to stringResource(R.string.chip_prompt_cinematic_video),
+            stringResource(R.string.chip_castle) to stringResource(R.string.chip_prompt_castle_video),
+            stringResource(R.string.chip_nature) to stringResource(R.string.chip_prompt_nature_video)
+        )
+    } else {
+        listOf(
+            stringResource(R.string.chip_cat) to stringResource(R.string.chip_prompt_cat),
+            stringResource(R.string.chip_cinematic) to stringResource(R.string.chip_prompt_cinematic),
+            stringResource(R.string.chip_castle) to stringResource(R.string.chip_prompt_castle),
+            stringResource(R.string.chip_nature) to stringResource(R.string.chip_prompt_nature)
+        )
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 12.dp, end = 12.dp, bottom = 4.dp),
+            .horizontalScroll(rememberScrollState())
+            .padding(start = 12.dp, end = 12.dp, bottom = 8.dp, top = 2.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         chips.forEach { (label, prompt) ->
@@ -723,16 +866,9 @@ private fun PromptSuggestionChips(
                 onClick = { onPick(prompt) },
                 enabled = enabled,
                 label = {
-                    Text(
-                        text = label,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.labelMedium
-                    )
+                    Text(label, maxLines = 1, style = MaterialTheme.typography.labelMedium)
                 },
-                modifier = Modifier
-                    .weight(1f)
-                    .height(32.dp)
+                modifier = Modifier.height(32.dp)
             )
         }
     }
@@ -742,73 +878,70 @@ private fun PromptSuggestionChips(
 private fun ChatComposer(
     prompt: String,
     onPromptChange: (String) -> Unit,
+    onClear: () -> Unit,
     enabled: Boolean,
     canSend: Boolean,
+    generateLabel: String,
     onVoice: () -> Unit,
     onSend: () -> Unit
 ) {
     Surface(
-        shape = RoundedCornerShape(28.dp),
+        shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.surfaceVariant,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 6.dp)
+            .padding(horizontal = 12.dp, vertical = 4.dp)
     ) {
-        Row(
-            modifier = Modifier.padding(start = 2.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
-            verticalAlignment = Alignment.Bottom
-        ) {
-            IconButton(
-                onClick = onVoice,
-                enabled = enabled,
-                modifier = Modifier.size(44.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.Mic,
-                    contentDescription = stringResource(R.string.voice_input),
-                    tint = PinkAccent
-                )
-            }
-            BasicTextField(
-                value = prompt,
-                onValueChange = onPromptChange,
-                enabled = enabled,
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(vertical = 12.dp),
-                textStyle = MaterialTheme.typography.bodyLarge.copy(
-                    color = MaterialTheme.colorScheme.onSurface
-                ),
-                cursorBrush = SolidColor(PinkAccent),
-                maxLines = 5,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                keyboardActions = KeyboardActions(onSend = { if (canSend) onSend() }),
-                decorationBox = { inner ->
-                    if (prompt.isEmpty()) {
-                        Text(
-                            text = stringResource(R.string.prompt_hint),
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    inner()
+        Column(Modifier.padding(8.dp)) {
+            Row(verticalAlignment = Alignment.Bottom) {
+                IconButton(onClick = onVoice, enabled = enabled, modifier = Modifier.size(44.dp)) {
+                    Icon(Icons.Outlined.Mic, contentDescription = stringResource(R.string.voice_input), tint = PinkAccent)
                 }
-            )
-            FilledIconButton(
+                BasicTextField(
+                    value = prompt,
+                    onValueChange = onPromptChange,
+                    enabled = enabled,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(vertical = 12.dp),
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
+                    cursorBrush = SolidColor(PinkAccent),
+                    maxLines = 6,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default),
+                    keyboardActions = KeyboardActions(),
+                    decorationBox = { inner ->
+                        if (prompt.isEmpty()) {
+                            Text(
+                                text = stringResource(R.string.prompt_hint),
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        inner()
+                    }
+                )
+                if (prompt.isNotEmpty()) {
+                    IconButton(onClick = onClear, enabled = enabled, modifier = Modifier.size(40.dp)) {
+                        Icon(Icons.Outlined.Close, contentDescription = stringResource(R.string.clear_prompt))
+                    }
+                }
+            }
+            Surface(
                 onClick = onSend,
                 enabled = canSend,
-                modifier = Modifier.size(44.dp),
-                shape = CircleShape,
-                colors = IconButtonDefaults.filledIconButtonColors(
-                    containerColor = PinkAccent,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    disabledContainerColor = PinkAccent.copy(alpha = 0.35f)
-                )
+                shape = RoundedCornerShape(16.dp),
+                color = if (canSend) PinkAccent else PinkAccent.copy(alpha = 0.35f),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Filled.ArrowUpward,
-                    contentDescription = stringResource(R.string.send)
-                )
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        text = generateLabel,
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
             }
         }
     }
@@ -821,11 +954,7 @@ private fun CreditsSheet(
     enabled: Boolean,
     onWatch: () -> Unit
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 24.dp, vertical = 8.dp)
-    ) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp)) {
         Text(stringResource(R.string.need_more_credits), style = MaterialTheme.typography.titleLarge)
         Spacer(Modifier.height(8.dp))
         Text(
@@ -843,17 +972,11 @@ private fun CreditsSheet(
         OutlinedButton(
             onClick = onWatch,
             enabled = enabled,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(52.dp),
+            modifier = Modifier.fillMaxWidth().height(52.dp),
             shape = RoundedCornerShape(16.dp)
         ) {
             if (loading) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(20.dp),
-                    strokeWidth = 2.dp,
-                    color = PinkAccent
-                )
+                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = PinkAccent)
                 Spacer(Modifier.size(10.dp))
                 Text(stringResource(R.string.ad_loading))
             } else {

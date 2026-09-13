@@ -18,7 +18,7 @@ import kotlinx.coroutines.launch
 data class SettingsUiState(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val quality: ImageQuality = ImageQuality.HIGH,
-    val style: ImageStyle = ImageStyle.REALISTIC,
+    val style: ImageStyle = ImageStyle.ALL,
     val aspectRatio: AspectRatio = AspectRatio.SQUARE,
     val enhance: Boolean = true,
     val dailyCredits: Int = CreditConfig.DAILY_INITIAL_CREDITS,
@@ -36,7 +36,7 @@ class SettingsViewModel(
     val quality: StateFlow<ImageQuality> = preferences.imageQuality
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ImageQuality.HIGH)
     val style: StateFlow<ImageStyle> = preferences.defaultStyle
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ImageStyle.REALISTIC)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ImageStyle.ALL)
     val aspectRatio: StateFlow<AspectRatio> = preferences.defaultAspectRatio
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AspectRatio.SQUARE)
     val enhance: StateFlow<Boolean> = preferences.enhancePrompts

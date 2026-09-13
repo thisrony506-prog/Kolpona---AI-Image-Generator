@@ -32,7 +32,7 @@ jobs:
       - name: Install Android platform 35
         run: |
           yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platforms;android-34" "build-tools;34.0.0" "platform-tools"
+          sdkmanager "platforms;android-35" "build-tools;34.0.0" "platform-tools"
 
       - name: Write local.properties
         env:
@@ -59,12 +59,10 @@ jobs:
           from pathlib import Path
           text = Path("gradle-build.log").read_text(errors="replace") if Path("gradle-build.log").exists() else "no gradle-build.log"
           lines = text.splitlines()
-          start = 0
-          for i, line in enumerate(lines):
-              if line.startswith("FAILURE:") or "What went wrong" in line or line.startswith("e: "):
-                  start = i
-                  break
-          snippet = "\n".join(lines[start:] or lines[-100:])[-12000:]
+          errors = [l for l in lines if l.startswith("e: ") or l.startswith("e:file:") or "Unresolved reference" in l or "error: " in l]
+          if not errors:
+              errors = [l for l in lines if "What went wrong" in l or l.startswith("FAILURE")]
+          snippet = "\n".join(errors[:80] or lines[-60:])[-12000:]
           Path("/tmp/fail.md").write_text("Kolpona CI Gradle failure:\n\n```\n" + snippet + "\n```\n")
           print(snippet)
           PY

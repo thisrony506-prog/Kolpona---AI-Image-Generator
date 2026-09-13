@@ -2,8 +2,8 @@ package com.kolpona.app.ui.navigation
 
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -155,7 +155,7 @@ private fun MainTabs(
                 NavigationBarItem(
                     selected = tab == MainTab.History,
                     onClick = { tab = MainTab.History },
-                    icon = { Icon(Icons.Outlined.GridView, contentDescription = stringResource(R.string.nav_history)) },
+                    icon = { Icon(Icons.Outlined.Menu, contentDescription = stringResource(R.string.nav_history)) },
                     label = { Text(stringResource(R.string.nav_history)) },
                     colors = NavigationBarItemDefaults.colors(indicatorColor = PinkAccent.copy(alpha = 0.18f))
                 )

@@ -33,8 +33,8 @@ android {
         applicationId = "com.kolpona.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 10
-        versionName = "1.5.1"
+        versionCode = 11
+        versionName = "1.5.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true

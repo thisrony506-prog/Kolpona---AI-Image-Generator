@@ -143,6 +143,7 @@ private fun MainTabs(
     val app = LocalContext.current.applicationContext as KolponaApp
 
     Scaffold(
+        containerColor = MidnightDeep,
         bottomBar = {
             NavigationBar(containerColor = MidnightDeep) {
                 val itemColors = NavigationBarItemDefaults.colors(

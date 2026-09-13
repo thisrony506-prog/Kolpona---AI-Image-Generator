@@ -1,8 +1,8 @@
 package com.kolpona.app.data.repository
 
 import com.kolpona.app.data.api.GenerationException
-import com.kolpona.app.data.api.PollinationsApiService
-import com.kolpona.app.data.api.PollinationsConfig
+import com.kolpona.app.data.api.GenerationRouter
+import com.kolpona.app.data.api.MediaRequest
 import com.kolpona.app.domain.manager.CreditConfig
 import com.kolpona.app.domain.manager.CreditManager
 import com.kolpona.app.domain.model.GeneratedImage
@@ -16,10 +16,9 @@ import com.kolpona.app.utils.PromptEnhancer
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.UUID
-import kotlin.random.Random
 
 class GenerateImageUseCase(
-    private val api: PollinationsApiService,
+    private val router: GenerationRouter,
     private val history: HistoryRepository,
     private val credits: CreditManager,
     private val files: ImageFileStore,
@@ -42,33 +41,25 @@ class GenerateImageUseCase(
         }
 
         val generationId = UUID.randomUUID().toString()
-        val enhanced = enhancer.enhance(prompt, input.style, input.enhance, input.mediaType)
+        val enhanced = enhancer.optimize(prompt, input.style, input.enhance, input.mediaType)
         val (width, height) = input.aspectRatio.dimensions(input.quality)
-        val model = if (input.mediaType == MediaKind.VIDEO) {
-            PollinationsConfig.VIDEO_MODEL
-        } else {
-            input.modelId.ifBlank { PollinationsConfig.DEFAULT_MODEL }
-        }
 
-        val bytes = try {
-            if (input.mediaType == MediaKind.VIDEO) {
-                api.generateVideo(prompt = enhanced, width = width, height = height)
-            } else {
-                api.generateImage(
+        val result = try {
+            router.generate(
+                MediaRequest(
                     prompt = enhanced,
-                    model = model,
+                    mediaType = input.mediaType,
                     width = width,
-                    height = height,
-                    seed = Random.nextInt(1, Int.MAX_VALUE)
+                    height = height
                 )
-            }
+            )
         } catch (e: GenerationException) {
             return GenerationOutcome.Failure(e.error)
         }
 
         val extension = if (input.mediaType == MediaKind.VIDEO) "mp4" else "jpg"
         val path = try {
-            files.save(generationId, bytes, extension)
+            files.save(generationId, result.bytes, extension)
         } catch (_: Exception) {
             return GenerationOutcome.Failure(GenerationError.UNKNOWN)
         }
@@ -79,7 +70,7 @@ class GenerateImageUseCase(
             enhancedPrompt = enhanced,
             styleId = input.style.id,
             aspectRatioId = input.aspectRatio.id,
-            model = model,
+            model = result.model,
             width = width,
             height = height,
             localPath = path,

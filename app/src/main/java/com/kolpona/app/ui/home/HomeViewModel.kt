@@ -3,7 +3,9 @@ package com.kolpona.app.ui.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.kolpona.app.ads.StartIoAdManager
+import com.kolpona.app.data.database.ChatSessionEntity
 import com.kolpona.app.data.prefs.AppPreferences
+import com.kolpona.app.data.repository.ChatRepository
 import com.kolpona.app.data.repository.GenerateImageUseCase
 import com.kolpona.app.di.AppContainer
 import com.kolpona.app.domain.manager.CreditConfig
@@ -45,7 +47,9 @@ data class HomeUiState(
     val successfulGenerations: Int = 0,
     val mediaType: MediaKind = MediaKind.IMAGE,
     val messages: List<ChatItem> = emptyList(),
-    val lastPrompt: String = ""
+    val lastPrompt: String = "",
+    val sessionId: String = "",
+    val sessions: List<ChatSessionEntity> = emptyList()
 )
 
 sealed class ChatItem {
@@ -73,6 +77,7 @@ class HomeViewModel(
     private val preferences: AppPreferences,
     private val imageSaver: ImageSaver,
     private val imageShare: ImageShare,
+    private val chats: ChatRepository,
     val adManager: StartIoAdManager
 ) : ViewModel() {
 
@@ -105,6 +110,18 @@ class HomeViewModel(
                     }
                 }
         }
+        viewModelScope.launch {
+            chats.observeSessions().collect { sessions ->
+                _state.update { it.copy(sessions = sessions) }
+            }
+        }
+        viewModelScope.launch {
+            val session = chats.latestOrCreate()
+            val (messages, lastPrompt) = chats.loadMessages(session.id)
+            _state.update {
+                it.copy(sessionId = session.id, messages = messages, lastPrompt = lastPrompt)
+            }
+        }
     }
 
     fun onPromptChange(value: String) {
@@ -130,15 +147,66 @@ class HomeViewModel(
     }
 
     fun newChat() {
-        _state.update {
-            it.copy(
-                messages = emptyList(),
-                pendingPrompt = "",
-                error = null,
-                lastPrompt = "",
-                prompt = "",
-                isGenerating = false
-            )
+        if (_state.value.isGenerating) return
+        viewModelScope.launch {
+            persistCurrent()
+            val session = chats.createSession()
+            _state.update {
+                it.copy(
+                    sessionId = session.id,
+                    messages = emptyList(),
+                    pendingPrompt = "",
+                    error = null,
+                    lastPrompt = "",
+                    prompt = "",
+                    isGenerating = false
+                )
+            }
+        }
+    }
+
+    fun openChat(id: String) {
+        if (_state.value.isGenerating || id == _state.value.sessionId) return
+        viewModelScope.launch {
+            persistCurrent()
+            val (messages, lastPrompt) = chats.loadMessages(id)
+            _state.update {
+                it.copy(
+                    sessionId = id,
+                    messages = messages,
+                    lastPrompt = lastPrompt,
+                    pendingPrompt = "",
+                    error = null,
+                    prompt = "",
+                    isGenerating = false
+                )
+            }
+        }
+    }
+
+    fun renameChat(id: String, title: String) {
+        viewModelScope.launch { chats.rename(id, title) }
+    }
+
+    fun deleteChat(id: String) {
+        if (_state.value.isGenerating && id == _state.value.sessionId) return
+        viewModelScope.launch {
+            chats.delete(id)
+            if (id == _state.value.sessionId) {
+                val session = chats.latestOrCreate()
+                val (messages, lastPrompt) = chats.loadMessages(session.id)
+                _state.update {
+                    it.copy(
+                        sessionId = session.id,
+                        messages = messages,
+                        lastPrompt = lastPrompt,
+                        pendingPrompt = "",
+                        error = null,
+                        prompt = "",
+                        isGenerating = false
+                    )
+                }
+            }
         }
     }
 
@@ -228,18 +296,21 @@ class HomeViewModel(
                             messages = ready
                         )
                     }
+                    persist(ready, generationPrompt, displayText)
                     if (count % 2 == 0) {
                         _events.emit(HomeEvent.ShowInterstitial)
                     }
                 }
                 is GenerationOutcome.Failure -> {
+                    val failed = withHint + ChatItem.Error(outcome.error, "e-${System.currentTimeMillis()}")
                     _state.update {
                         it.copy(
                             isGenerating = false,
                             error = outcome.error,
-                            messages = withHint + ChatItem.Error(outcome.error)
+                            messages = failed
                         )
                     }
+                    persist(failed, snapshot.lastPrompt, displayText)
                     if (outcome.error == GenerationError.INSUFFICIENT_CREDITS) {
                         _events.emit(HomeEvent.NeedCredits)
                     }
@@ -288,6 +359,23 @@ class HomeViewModel(
         viewModelScope.launch { imageShare.share(image.localPath, title) }
     }
 
+    private suspend fun persistCurrent() {
+        val snapshot = _state.value
+        if (snapshot.sessionId.isBlank()) return
+        persist(snapshot.messages, snapshot.lastPrompt, snapshot.lastPrompt)
+    }
+
+    private suspend fun persist(messages: List<ChatItem>, lastPrompt: String, titleHint: String) {
+        var id = _state.value.sessionId
+        if (id.isBlank()) {
+            val session = chats.createSession()
+            id = session.id
+            _state.update { it.copy(sessionId = id) }
+        }
+        val title = messages.filterIsInstance<ChatItem.User>().firstOrNull()?.text ?: titleHint
+        chats.replaceMessages(id, title, lastPrompt, messages)
+    }
+
     private fun resolvePrompt(typed: String, last: String): String {
         if (last.isBlank()) return typed
         val words = typed.split(Regex("\\s+")).filter { it.isNotBlank() }
@@ -305,6 +393,7 @@ class HomeViewModel(
             preferences = container.preferences,
             imageSaver = container.imageSaver,
             imageShare = container.imageShare,
+            chats = container.chatRepository,
             adManager = container.adManager
         )
     }

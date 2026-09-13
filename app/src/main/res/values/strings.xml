@@ -41,6 +41,13 @@
     <string name="chip_prompt_nature_video">waterfall flowing continuously, realistic water motion, cinematic nature scene, drone shot</string>
     <string name="send">Send</string>
     <string name="new_chat">New chat</string>
+    <string name="chats">Chats</string>
+    <string name="cd_chats">Chat history</string>
+    <string name="rename_chat">Rename</string>
+    <string name="delete_chat">Delete chat</string>
+    <string name="delete_chat_body">This chat will be removed. Saved images stay in History.</string>
+    <string name="chat_untitled">New chat</string>
+    <string name="save">Save</string>
     <string name="media_image">Image</string>
     <string name="media_video">Video</string>
     <string name="category">Category</string>
@@ -144,7 +151,7 @@
     <string name="default_style">Default Category</string>
     <string name="default_aspect_ratio">Default Aspect Ratio</string>
     <string name="enhance_prompts">Enhance prompts</string>
-    <string name="enhance_prompts_subtitle">Add style detail locally. No extra AI request.</string>
+    <string name="enhance_prompts_subtitle">Add only relevant visual or motion detail. Original text stays in chat.</string>
     <string name="quality_standard">Standard</string>
     <string name="quality_high">High</string>
     <string name="clear_history">Clear History</string>

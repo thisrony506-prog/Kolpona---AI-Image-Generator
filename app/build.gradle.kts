@@ -33,17 +33,22 @@ android {
         applicationId = "com.kolpona.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 6
-        versionName = "1.2.0"
+        versionCode = 7
+        versionName = "1.3.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
 
-        // Secret is injected from local.properties or CI env. Never commit a real key.
+        // Secrets injected from local.properties or CI env. Never commit real keys.
         buildConfigField(
             "String",
             "POLLINATIONS_API_KEY",
             "\"${escapeBuildConfig(secret("POLLINATIONS_API_KEY"))}\""
+        )
+        buildConfigField(
+            "String",
+            "HUGGINGFACE_API_KEY",
+            "\"${escapeBuildConfig(secret("HUGGINGFACE_API_KEY"))}\""
         )
     }
 

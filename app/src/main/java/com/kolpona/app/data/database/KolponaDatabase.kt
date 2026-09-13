@@ -6,12 +6,13 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 
 @Database(
-    entities = [GeneratedImageEntity::class],
-    version = 2,
+    entities = [GeneratedImageEntity::class, ChatSessionEntity::class, ChatMessageEntity::class],
+    version = 3,
     exportSchema = false
 )
 abstract class KolponaDatabase : RoomDatabase() {
     abstract fun generatedImageDao(): GeneratedImageDao
+    abstract fun chatDao(): ChatDao
 
     companion object {
         fun create(context: Context): KolponaDatabase =

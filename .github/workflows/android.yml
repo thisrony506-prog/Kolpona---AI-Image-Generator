@@ -37,10 +37,20 @@ jobs:
       - name: Write local.properties
         env:
           POLLINATIONS_API_KEY: ${{ secrets.POLLINATIONS_API_KEY }}
+          HUGGINGFACE_API_KEY: ${{ secrets.HUGGINGFACE_API_KEY }}
         run: |
-          SDK_PATH="${ANDROID_SDK_ROOT:-${ANDROID_HOME}}"
-          printf 'sdk.dir=%s\nPOLLINATIONS_API_KEY=%s\n' "$SDK_PATH" "$POLLINATIONS_API_KEY" > local.properties
-          echo "Using SDK $SDK_PATH"
+          export SDK_PATH="${ANDROID_SDK_ROOT:-${ANDROID_HOME}}"
+          python3 - << 'PY'
+          import os
+          from pathlib import Path
+          sdk = os.environ.get("SDK_PATH") or os.environ.get("ANDROID_SDK_ROOT") or os.environ.get("ANDROID_HOME") or ""
+          lines = [f"sdk.dir={sdk}"]
+          for name in ("POLLINATIONS_API_KEY", "HUGGINGFACE_API_KEY"):
+              value = os.environ.get(name, "")
+              lines.append(f"{name}={value}")
+          Path("local.properties").write_text("\n".join(lines) + "\n")
+          print(f"Using SDK {sdk}")
+          PY
 
       - name: Make Gradle wrapper executable
         run: chmod +x gradlew

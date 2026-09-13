@@ -40,7 +40,9 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.Image
@@ -50,6 +52,7 @@ import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Videocam
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -57,6 +60,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -93,6 +97,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.kolpona.app.R
+import com.kolpona.app.data.database.ChatSessionEntity
 import com.kolpona.app.domain.manager.CreditConfig
 import com.kolpona.app.domain.model.AspectRatio
 import com.kolpona.app.domain.model.GeneratedImage
@@ -123,7 +128,11 @@ fun HomeScreen(
     val focusManager = LocalFocusManager.current
     val listState = rememberLazyListState()
     var showCreditsSheet by rememberSaveable { mutableStateOf(false) }
+    var showChatsSheet by rememberSaveable { mutableStateOf(false) }
     var optionSheet by rememberSaveable { mutableStateOf(OptionSheet.None) }
+    var renameId by rememberSaveable { mutableStateOf<String?>(null) }
+    var renameText by rememberSaveable { mutableStateOf("") }
+    var deleteId by rememberSaveable { mutableStateOf<String?>(null) }
 
     val voiceLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -217,6 +226,7 @@ fun HomeScreen(
             ChatHeader(
                 credits = state.credits,
                 onCredits = { showCreditsSheet = true },
+                onChats = { showChatsSheet = true },
                 onNewChat = viewModel::newChat,
                 onSettings = onOpenSettings
             )
@@ -367,6 +377,78 @@ fun HomeScreen(
         }
     }
 
+    if (showChatsSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showChatsSheet = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = MaterialTheme.colorScheme.surface
+        ) {
+            ChatSessionsSheet(
+                sessions = state.sessions,
+                currentId = state.sessionId,
+                onOpen = {
+                    viewModel.openChat(it)
+                    showChatsSheet = false
+                },
+                onNew = {
+                    viewModel.newChat()
+                    showChatsSheet = false
+                },
+                onRename = { id, title ->
+                    renameId = id
+                    renameText = title
+                },
+                onDelete = { deleteId = it }
+            )
+        }
+    }
+
+    val renaming = renameId
+    if (renaming != null) {
+        AlertDialog(
+            onDismissRequest = { renameId = null },
+            title = { Text(stringResource(R.string.rename_chat)) },
+            text = {
+                OutlinedTextField(
+                    value = renameText,
+                    onValueChange = { renameText = it },
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.renameChat(renaming, renameText)
+                        renameId = null
+                    }
+                ) { Text(stringResource(R.string.save)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { renameId = null }) { Text(stringResource(R.string.cancel)) }
+            }
+        )
+    }
+
+    val deleting = deleteId
+    if (deleting != null) {
+        AlertDialog(
+            onDismissRequest = { deleteId = null },
+            title = { Text(stringResource(R.string.delete_chat)) },
+            text = { Text(stringResource(R.string.delete_chat_body)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.deleteChat(deleting)
+                        deleteId = null
+                    }
+                ) { Text(stringResource(R.string.delete)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteId = null }) { Text(stringResource(R.string.cancel)) }
+            }
+        )
+    }
+
     if (showCreditsSheet) {
         ModalBottomSheet(
             onDismissRequest = { if (!state.watchingAd) showCreditsSheet = false },
@@ -415,6 +497,7 @@ private fun speechIntent(prompt: String): Intent =
 private fun ChatHeader(
     credits: Int,
     onCredits: () -> Unit,
+    onChats: () -> Unit,
     onNewChat: () -> Unit,
     onSettings: () -> Unit
 ) {
@@ -456,12 +539,76 @@ private fun ChatHeader(
                 )
             }
         }
+        IconButton(onClick = onChats, modifier = Modifier.size(44.dp)) {
+            Icon(Icons.Outlined.ChatBubbleOutline, contentDescription = stringResource(R.string.cd_chats))
+        }
         IconButton(onClick = onNewChat, modifier = Modifier.size(44.dp)) {
             Icon(Icons.Outlined.Edit, contentDescription = stringResource(R.string.cd_new_chat))
         }
         IconButton(onClick = onSettings, modifier = Modifier.size(44.dp)) {
             Icon(Icons.Outlined.Settings, contentDescription = stringResource(R.string.cd_settings))
         }
+    }
+}
+
+@Composable
+private fun ChatSessionsSheet(
+    sessions: List<ChatSessionEntity>,
+    currentId: String,
+    onOpen: (String) -> Unit,
+    onNew: () -> Unit,
+    onRename: (String, String) -> Unit,
+    onDelete: (String) -> Unit
+) {
+    Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
+        Text(stringResource(R.string.chats), style = MaterialTheme.typography.titleLarge)
+        Spacer(Modifier.height(8.dp))
+        TextButton(onClick = onNew) {
+            Icon(Icons.Outlined.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.size(8.dp))
+            Text(stringResource(R.string.new_chat))
+        }
+        if (sessions.isEmpty()) {
+            Text(
+                text = stringResource(R.string.chat_untitled),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(vertical = 12.dp)
+            )
+        } else {
+            sessions.forEach { session ->
+                val active = session.id == currentId
+                Surface(
+                    onClick = { onOpen(session.id) },
+                    shape = RoundedCornerShape(14.dp),
+                    color = if (active) PinkAccent.copy(alpha = 0.16f) else Color.Transparent,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 4.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = session.title.ifBlank { stringResource(R.string.chat_untitled) },
+                            modifier = Modifier.weight(1f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+                            color = if (active) PinkAccent else MaterialTheme.colorScheme.onSurface
+                        )
+                        IconButton(onClick = { onRename(session.id, session.title) }, modifier = Modifier.size(40.dp)) {
+                            Icon(Icons.Outlined.Edit, contentDescription = stringResource(R.string.rename_chat))
+                        }
+                        IconButton(onClick = { onDelete(session.id) }, modifier = Modifier.size(40.dp)) {
+                            Icon(Icons.Outlined.Delete, contentDescription = stringResource(R.string.delete_chat))
+                        }
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(24.dp))
     }
 }
 

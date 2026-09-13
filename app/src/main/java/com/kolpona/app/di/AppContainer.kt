@@ -3,9 +3,13 @@ package com.kolpona.app.di
 import android.app.Application
 import com.kolpona.app.ads.StartIoAdManager
 import com.kolpona.app.data.api.AuthInterceptor
+import com.kolpona.app.data.api.GenerationRouter
+import com.kolpona.app.data.api.HuggingFaceApiService
 import com.kolpona.app.data.api.PollinationsApiService
+import com.kolpona.app.data.api.TextNormalizeService
 import com.kolpona.app.data.database.KolponaDatabase
 import com.kolpona.app.data.prefs.AppPreferences
+import com.kolpona.app.data.repository.ChatRepository
 import com.kolpona.app.data.repository.GenerateImageUseCase
 import com.kolpona.app.data.repository.HistoryRepository
 import com.kolpona.app.domain.manager.CreditManager
@@ -23,6 +27,7 @@ class AppContainer(app: Application) {
     val database: KolponaDatabase = KolponaDatabase.create(app)
     val imageStore: ImageFileStore = ImageFileStore(app)
     val historyRepository: HistoryRepository = HistoryRepository(database.generatedImageDao(), imageStore)
+    val chatRepository: ChatRepository = ChatRepository(database.chatDao(), historyRepository)
     val networkMonitor: NetworkMonitor = NetworkMonitor(app)
     val imageSaver: ImageSaver = ImageSaver(app)
     val imageShare: ImageShare = ImageShare(app)
@@ -37,13 +42,16 @@ class AppContainer(app: Application) {
         .build()
 
     val pollinationsApi: PollinationsApiService = PollinationsApiService(okHttpClient)
+    val huggingFaceApi: HuggingFaceApiService = HuggingFaceApiService(okHttpClient)
+    val textNormalize: TextNormalizeService = TextNormalizeService(okHttpClient)
+    val generationRouter: GenerationRouter = GenerationRouter(huggingFaceApi, pollinationsApi)
 
     val generateImageUseCase: GenerateImageUseCase = GenerateImageUseCase(
-        api = pollinationsApi,
+        router = generationRouter,
         history = historyRepository,
         credits = creditManager,
         files = imageStore,
-        enhancer = PromptEnhancer(),
+        enhancer = PromptEnhancer(textNormalize),
         networkMonitor = networkMonitor
     )
 }

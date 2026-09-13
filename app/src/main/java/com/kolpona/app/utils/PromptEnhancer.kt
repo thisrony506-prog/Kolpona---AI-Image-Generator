@@ -76,8 +76,9 @@ class PromptEnhancer(
                 intent.kind == SceneKind.FOOD || style == ImageStyle.FOOD ->
                     add("food photography, appetizing, shallow depth of field")
                 else -> {
-                    if (!prompt.contains("light", ignoreCase = true)) add("natural lighting")
-                    if (!prompt.contains("detail", ignoreCase = true)) add("highly detailed")
+                    val shortPrompt = prompt.split(Regex("\\s+")).size < 12
+                    if (shortPrompt && !prompt.contains("light", ignoreCase = true)) add("natural lighting")
+                    if (shortPrompt && !prompt.contains("detail", ignoreCase = true)) add("highly detailed")
                 }
             }
             if (intent.culturalRegion) {

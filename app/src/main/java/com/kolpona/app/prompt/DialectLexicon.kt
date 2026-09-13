@@ -137,8 +137,9 @@ object DialectLexicon {
     }
 
     fun stillNeedsModel(original: String, rewritten: String): Boolean {
-        if (LanguageScripts.nonLatinRatio(rewritten) >= 0.12f) return true
+        if (LanguageScripts.nonLatinRatio(rewritten) >= 0.08f) return true
         if (LanguageScripts.isMixed(original)) return true
+        if (!LanguageScripts.looksLikeEnglish(rewritten)) return true
         if (rewritten.equals(original.trim(), ignoreCase = true) &&
             LanguageScripts.nonLatinRatio(original) >= 0.08f
         ) return true
@@ -182,6 +183,22 @@ object LanguageScripts {
         }
         val hasOther = nonLatinRatio(text) >= 0.08f
         return hasLatinWord && hasOther
+    }
+
+    fun looksLikeEnglish(text: String): Boolean {
+        if (nonLatinRatio(text) >= 0.08f) return false
+        val tokens = text.lowercase().split(Regex("[^a-z]+")).filter { it.length >= 2 }
+        if (tokens.isEmpty()) return false
+        val markers = setOf(
+            "the", "and", "of", "in", "on", "with", "for", "at", "from", "by", "to",
+            "cat", "dog", "man", "woman", "girl", "boy", "image", "video", "photo",
+            "cinematic", "realistic", "ultra", "detailed", "sitting", "walking",
+            "running", "black", "white", "red", "blue", "green", "pink", "castle",
+            "nature", "cafe", "neon", "light", "camera", "fashion", "pant", "shirt",
+            "dress", "landscape", "mountain", "waterfall", "street", "night", "day",
+            "beautiful", "cute", "a", "an"
+        )
+        return tokens.count { it in markers } >= 1
     }
 }
 

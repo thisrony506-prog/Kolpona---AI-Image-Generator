@@ -16,7 +16,9 @@ object PollinationsConfig {
     const val FALLBACK_PATH = "prompt"
     const val VIDEO_FALLBACK_BASE_URL = "https://video.pollinations.ai"
     const val DEFAULT_MODEL = "flux"
-    const val VIDEO_MODEL = "veo"
+    const val VIDEO_MODEL = "seedance"
+    val VIDEO_MODELS: List<String> = listOf("seedance", "veo", "wan")
+    const val USER_AGENT = "Kolpona/1.6.1 (Android)"
 
     val apiKey: String
         get() = BuildConfig.POLLINATIONS_API_KEY

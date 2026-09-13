@@ -37,10 +37,13 @@ class HuggingFaceApiService(
         )
     }
 
-    suspend fun generateVideo(prompt: String): ByteArray = withContext(Dispatchers.IO) {
+    suspend fun generateVideo(
+        prompt: String,
+        model: String = HuggingFaceConfig.VIDEO_MODEL
+    ): ByteArray = withContext(Dispatchers.IO) {
         if (!isConfigured) throw GenerationException(GenerationError.VIDEO_UNAVAILABLE)
         postModel(
-            model = HuggingFaceConfig.VIDEO_MODEL,
+            model = model,
             prompt = prompt,
             expectVideo = true,
             width = null,
@@ -91,7 +94,7 @@ class HuggingFaceApiService(
             .post(bodyJson.toRequestBody(media))
             .header("Accept", if (expectVideo) "video/mp4,application/json" else "image/jpeg,image/png,application/json")
             .header("Content-Type", "application/json")
-            .header("User-Agent", "Kolpona/1.4.0 (Android)")
+            .header("User-Agent", HuggingFaceConfig.USER_AGENT)
             .header("X-Wait-For-Model", "true")
             .build()
         try {
@@ -99,12 +102,16 @@ class HuggingFaceApiService(
                 val bytes = response.body?.bytes() ?: ByteArray(0)
                 when (response.code) {
                     in 200..299 -> {
-                        if (expectVideo) {
-                            if (!looksLikeVideo(bytes)) throw GenerationException(GenerationError.VIDEO_UNAVAILABLE)
-                        } else if (!looksLikeImage(bytes)) {
-                            throw GenerationException(GenerationError.EMPTY_RESPONSE)
+                        if (expectVideo && MediaPayload.looksLikeVideo(bytes)) return bytes
+                        if (!expectVideo && MediaPayload.looksLikeImage(bytes)) return bytes
+                        val asText = runCatching { bytes.decodeToString() }.getOrNull().orEmpty()
+                        val nested = MediaPayload.extractHttpUrl(asText)
+                        if (!nested.isNullOrBlank()) {
+                            return executeGet(nested, expectVideo)
                         }
-                        return bytes
+                        throw GenerationException(
+                            if (expectVideo) GenerationError.VIDEO_UNAVAILABLE else GenerationError.EMPTY_RESPONSE
+                        )
                     }
                     503 -> throw GenerationException(GenerationError.SERVER)
                     429 -> throw GenerationException(GenerationError.RATE_LIMIT)
@@ -175,19 +182,24 @@ class HuggingFaceApiService(
         }
     }
 
-    private fun looksLikeImage(bytes: ByteArray): Boolean {
-        if (bytes.size < 24) return false
-        val png = bytes[0] == 0x89.toByte() && bytes[1] == 0x50.toByte()
-        val jpg = bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte()
-        val webp = bytes.size > 12 && bytes[0] == 'R'.code.toByte() && bytes[8] == 'W'.code.toByte()
-        return png || jpg || webp
-    }
-
-    private fun looksLikeVideo(bytes: ByteArray): Boolean {
-        if (bytes.size < 12) return false
-        val ftyp = bytes[4] == 'f'.code.toByte() && bytes[5] == 't'.code.toByte() &&
-            bytes[6] == 'y'.code.toByte() && bytes[7] == 'p'.code.toByte()
-        val webm = bytes[0] == 0x1A.toByte() && bytes[1] == 0x45.toByte()
-        return ftyp || webm
+    private fun executeGet(url: String, expectVideo: Boolean): ByteArray {
+        val request = Request.Builder()
+            .url(url)
+            .get()
+            .header("User-Agent", HuggingFaceConfig.USER_AGENT)
+            .build()
+        client.newCall(request).execute().use { response ->
+            val bytes = response.body?.bytes() ?: ByteArray(0)
+            if (!response.isSuccessful) {
+                throw GenerationException(
+                    if (expectVideo) GenerationError.VIDEO_UNAVAILABLE else GenerationError.EMPTY_RESPONSE
+                )
+            }
+            if (expectVideo && MediaPayload.looksLikeVideo(bytes)) return bytes
+            if (!expectVideo && MediaPayload.looksLikeImage(bytes)) return bytes
+            throw GenerationException(
+                if (expectVideo) GenerationError.VIDEO_UNAVAILABLE else GenerationError.EMPTY_RESPONSE
+            )
+        }
     }
 }

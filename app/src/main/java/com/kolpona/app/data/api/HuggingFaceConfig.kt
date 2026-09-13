@@ -13,7 +13,13 @@ object HuggingFaceConfig {
 
     const val IMAGE_MODEL_PRIMARY = "black-forest-labs/FLUX.1-schnell"
     const val IMAGE_MODEL_FALLBACK = "stabilityai/sdxl-turbo"
-    const val VIDEO_MODEL = "ali-vilab/text-to-video-ms-1.7b"
+    const val VIDEO_MODEL = "Lightricks/LTX-Video"
+    val VIDEO_MODELS: List<String> = listOf(
+        "Lightricks/LTX-Video",
+        "Wan-AI/Wan2.1-T2V-1.3B",
+        "ali-vilab/text-to-video-ms-1.7b"
+    )
+    const val USER_AGENT = "Kolpona/1.6.1 (Android)"
 
     val apiKey: String
         get() = BuildConfig.HUGGINGFACE_API_KEY

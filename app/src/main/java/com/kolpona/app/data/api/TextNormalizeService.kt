@@ -9,10 +9,11 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONObject
 
 /**
  * Language + dialect understanding. Never shown in the UI.
- * Local lexicon first; model polish only when the text still needs it.
+ * Local lexicon first; model polish when the text still needs it.
  */
 class TextNormalizeService(
     private val client: OkHttpClient
@@ -29,6 +30,7 @@ class TextNormalizeService(
     }
 
     private fun polishWithModel(original: String, rewritten: String): String? {
+        chatCompletions(original, rewritten)?.let { return it }
         val instruction = SYSTEM_RULES +
             "\nOriginal:\n${original.take(800)}\n\nDraft:\n${rewritten.take(800)}"
         val json = """{"model":"openai","private":true,"messages":[""" +
@@ -39,8 +41,8 @@ class TextNormalizeService(
         val request = Request.Builder()
             .url("https://text.pollinations.ai/")
             .post(json.toRequestBody(media))
-            .header("Accept", "text/plain")
-            .header("User-Agent", "Kolpona/1.4.0 (Android)")
+            .header("Accept", "text/plain,application/json")
+            .header("User-Agent", PollinationsConfig.USER_AGENT)
             .build()
         return try {
             client.newCall(request).execute().use { response ->
@@ -53,6 +55,51 @@ class TextNormalizeService(
         }
     }
 
+    private fun chatCompletions(original: String, rewritten: String): String? {
+        val json = """{"model":"openai","private":true,"messages":[""" +
+            """{"role":"system","content":"${escape(SYSTEM_RULES)}"},""" +
+            """{"role":"user","content":"${escape("Original:\n${original.take(700)}\n\nDraft:\n${rewritten.take(700)}")}"}""" +
+            """]}"""
+        val media = "application/json; charset=utf-8".toMediaType()
+        val urls = listOf(
+            "https://gen.pollinations.ai/v1/chat/completions",
+            "https://text.pollinations.ai/openai"
+        )
+        for (url in urls) {
+            val request = Request.Builder()
+                .url(url)
+                .post(json.toRequestBody(media))
+                .header("Accept", "application/json,text/plain")
+                .header("User-Agent", PollinationsConfig.USER_AGENT)
+                .build()
+            val parsed = try {
+                client.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) return@use null
+                    parseCompletion(response.body?.string().orEmpty())
+                }
+            } catch (_: Exception) {
+                null
+            }
+            if (!parsed.isNullOrBlank()) return parsed
+        }
+        return null
+    }
+
+    private fun parseCompletion(raw: String): String? {
+        val text = raw.trim()
+        if (text.isBlank()) return null
+        runCatching {
+            val json = JSONObject(text)
+            val content = json.optJSONArray("choices")
+                ?.optJSONObject(0)
+                ?.optJSONObject("message")
+                ?.optString("content")
+                .orEmpty()
+            sanitizeModelOutput(content)?.let { return it }
+        }
+        return sanitizeModelOutput(text)
+    }
+
     private fun fallbackGet(instruction: String): String? {
         val encoded = java.net.URLEncoder.encode(instruction.take(1100), Charsets.UTF_8.name())
             .replace("+", "%20")
@@ -60,7 +107,7 @@ class TextNormalizeService(
             .url("https://text.pollinations.ai/$encoded?model=openai")
             .get()
             .header("Accept", "text/plain")
-            .header("User-Agent", "Kolpona/1.4.0 (Android)")
+            .header("User-Agent", PollinationsConfig.USER_AGENT)
             .build()
         return try {
             client.newCall(request).execute().use { response ->
@@ -95,12 +142,14 @@ class TextNormalizeService(
 
     companion object {
         private const val SYSTEM_RULES =
-            "Convert the user's image/video request into ONE English generation prompt. " +
-                "Keep subject, gender, age, clothing, colors, location, action, time, mood, and culture. " +
-                "Keep South Asian clothing names (sari, lungi, panjabi, salwar kameez) and place names " +
-                "(Khulna, Dhaka, Bangladesh, Bengal). Do not replace a Bangladesh village with a Western countryside. " +
+            "Rewrite the user's image or video request as ONE English generation prompt. " +
+                "Keep every subject, count, gender, age, clothing, color, place, culture, action, camera move, mood, and time of day. " +
+                "Keep South Asian clothing names (sari, lungi, panjabi, salwar kameez) and place names (Khulna, Dhaka, Bangladesh, Bengal). " +
+                "Do not replace a Bangladesh village with a Western countryside. " +
                 "Do not translate text that must appear in the image; keep that wording in quotes. " +
-                "Do not add a new subject. Do not change colors, clothing, night/day, or region. " +
+                "Do not add a new subject, clothing, color, or motion the user did not ask for. " +
+                "Do not change red to black, night to day, sitting to walking, or region. " +
+                "If the request is already clear English, return it unchanged. " +
                 "Reply with only the prompt."
     }
 }

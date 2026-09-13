@@ -129,32 +129,40 @@ class GenerationRouter(
                 }
             )
         }
-        add(
-            RoutedModel(
-                id = PollinationsConfig.VIDEO_MODEL,
-                media = MediaKind.VIDEO,
-                promptAdherence = 5,
-                photoreal = 5,
-                supportsNegative = false
-            ) { req ->
-                pollinations.generateVideo(req.prompt, req.width, req.height)
-            }
-        )
-        if (huggingFace.isConfigured) {
+        PollinationsConfig.VIDEO_MODELS.forEachIndexed { index, model ->
             add(
                 RoutedModel(
-                    id = HuggingFaceConfig.VIDEO_MODEL,
+                    id = model,
                     media = MediaKind.VIDEO,
-                    promptAdherence = 2,
-                    photoreal = 3,
+                    promptAdherence = 5 - index,
+                    photoreal = 5,
                     supportsNegative = false
                 ) { req ->
-                    huggingFace.generateVideo(req.prompt)
+                    pollinations.generateVideo(req.prompt, req.width, req.height, model)
                 }
             )
+        }
+        if (huggingFace.isConfigured) {
+            HuggingFaceConfig.VIDEO_MODELS.forEachIndexed { index, model ->
+                add(
+                    RoutedModel(
+                        id = model,
+                        media = MediaKind.VIDEO,
+                        promptAdherence = 2 - index,
+                        photoreal = 3,
+                        supportsNegative = false
+                    ) { req ->
+                        huggingFace.generateVideo(req.prompt, model)
+                    }
+                )
+            }
         }
     }
 
     private fun qualityOk(bytes: ByteArray, kind: MediaKind): Boolean =
-        if (kind == MediaKind.VIDEO) bytes.size >= 20_000 else bytes.size >= 8_000
+        if (kind == MediaKind.VIDEO) {
+            bytes.size >= 12_000 && MediaPayload.looksLikeVideo(bytes)
+        } else {
+            bytes.size >= 8_000
+        }
 }

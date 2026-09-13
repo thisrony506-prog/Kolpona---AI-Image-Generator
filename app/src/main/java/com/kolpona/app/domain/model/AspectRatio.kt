@@ -22,6 +22,15 @@ enum class AspectRatio(
         return align(w) to align(h)
     }
 
+    fun videoDimensions(): Pair<Int, Int> {
+        val (w, h) = dimensions(ImageQuality.HIGH)
+        val maxSide = 768
+        val longSide = maxOf(w, h).toFloat().coerceAtLeast(1f)
+        val scale = if (longSide > maxSide) maxSide / longSide else 1f
+        return align((w * scale).toInt().coerceAtLeast(256)) to
+            align((h * scale).toInt().coerceAtLeast(256))
+    }
+
     private fun align(value: Int): Int = value - (value % 8)
 
     companion object {

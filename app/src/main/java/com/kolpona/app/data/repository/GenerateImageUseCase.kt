@@ -42,7 +42,11 @@ class GenerateImageUseCase(
 
         val generationId = UUID.randomUUID().toString()
         val optimized = enhancer.optimize(prompt, input.style, input.enhance, input.mediaType)
-        val (width, height) = input.aspectRatio.dimensions(input.quality)
+        val (width, height) = if (input.mediaType == MediaKind.VIDEO) {
+            input.aspectRatio.videoDimensions()
+        } else {
+            input.aspectRatio.dimensions(input.quality)
+        }
 
         val result = try {
             router.generate(

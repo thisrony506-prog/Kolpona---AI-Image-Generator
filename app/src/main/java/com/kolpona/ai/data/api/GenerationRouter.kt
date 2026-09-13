@@ -128,16 +128,28 @@ class GenerationRouter(
         val frame = try {
             generateImage(request)
         } catch (e: GenerationException) {
-            throw last ?: e
+            throw videoError(last ?: e)
         }
         if (!huggingFace.isConfigured) {
-            throw last ?: GenerationException(GenerationError.VIDEO_UNAVAILABLE)
+            throw videoError(last)
         }
-        val animated = huggingFace.generateVideoFromImage(request.prompt, frame.bytes)
+        val animated = try {
+            huggingFace.generateVideoFromImage(request.prompt, frame.bytes)
+        } catch (e: GenerationException) {
+            throw videoError(last ?: e)
+        }
         if (!qualityOk(animated, MediaKind.VIDEO)) {
-            throw last ?: GenerationException(GenerationError.VIDEO_UNAVAILABLE)
+            throw videoError(last)
         }
         return MediaBytes(animated, "ltx-i2v")
+    }
+
+    private fun videoError(last: GenerationException?): GenerationException {
+        return when (last?.error) {
+            GenerationError.NETWORK, GenerationError.RATE_LIMIT ->
+                last ?: GenerationException(GenerationError.VIDEO_UNAVAILABLE)
+            else -> GenerationException(GenerationError.VIDEO_UNAVAILABLE)
+        }
     }
 
     private fun qualityOk(bytes: ByteArray, kind: MediaKind): Boolean =

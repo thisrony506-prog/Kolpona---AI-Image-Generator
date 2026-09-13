@@ -110,6 +110,7 @@ object MediaPayload {
         return lower.contains(".mp4") ||
             lower.contains(".webm") ||
             lower.contains("fal.media") ||
+            lower.contains("cdn.fal.ai") ||
             lower.contains("replicate.delivery") ||
             lower.contains("wavespeed")
     }

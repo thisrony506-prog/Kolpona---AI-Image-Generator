@@ -15,12 +15,12 @@ object HuggingFaceConfig {
 
     const val IMAGE_MODEL_KLEIN = "black-forest-labs/FLUX.2-klein"
     const val IMAGE_MODEL_DEV = "black-forest-labs/FLUX.1-dev"
-    const val VIDEO_MODEL = "Wan-AI/Wan2.2-T2V-A14B"
+    const val VIDEO_MODEL = "Wan-AI/Wan2.2-TI2V-5B"
     const val IMAGE_STEPS = 50
     const val IMAGE_GUIDANCE = 8.5
     val VIDEO_MODELS: List<String> = listOf(
-        "Wan-AI/Wan2.2-T2V-A14B",
         "Wan-AI/Wan2.2-TI2V-5B",
+        "Wan-AI/Wan2.2-T2V-A14B",
         "Wan-AI/Wan2.1-T2V-1.3B",
         "tencent/HunyuanVideo"
     )
@@ -31,7 +31,7 @@ object HuggingFaceConfig {
         "Qwen/Qwen2.5-3B-Instruct"
     )
     const val TRANSLATE_MODEL = "facebook/nllb-200-distilled-600M"
-    const val USER_AGENT = "Kolpona/1.13.1 (Android)"
+    const val USER_AGENT = "Kolpona/1.13.2 (Android)"
 
     val apiKey: String
         get() = BuildConfig.HUGGINGFACE_API_KEY

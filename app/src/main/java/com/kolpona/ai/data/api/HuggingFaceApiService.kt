@@ -65,7 +65,7 @@ class HuggingFaceApiService(
     ): ByteArray = withContext(Dispatchers.IO) {
         if (!isConfigured) throw GenerationException(GenerationError.VIDEO_UNAVAILABLE)
         val media = "application/json; charset=utf-8".toMediaType()
-        val urls = videoUrls(model)
+        val urls = videoUrls(model).map { withFalQueue(it) }
         var last: GenerationException? = null
         for (url in urls) {
             for (body in videoBodiesFor(url, prompt, width, height)) {
@@ -96,7 +96,7 @@ class HuggingFaceApiService(
         val urls = listOf(
             HuggingFaceConfig.I2V_URL,
             "${HuggingFaceConfig.ROUTER_HOST}/fal-ai/fal-ai/wan/v2.2-5b/image-to-video"
-        )
+        ).map { withFalQueue(it) }
         var last: GenerationException? = null
         for (url in urls) {
             for (body in bodies) {
@@ -231,7 +231,7 @@ class HuggingFaceApiService(
         allowRetry: Boolean
     ): ByteArray {
         val http = if (expectVideo) videoClient else client
-        val request = Request.Builder()
+        val builder = Request.Builder()
             .url(url)
             .post(bodyJson.toRequestBody(media))
             .header("Accept", if (expectVideo) "video/mp4,application/json" else "image/jpeg,image/png,application/json")
@@ -239,7 +239,10 @@ class HuggingFaceApiService(
             .header("Authorization", "Bearer ${HuggingFaceConfig.apiKey}")
             .header("User-Agent", HuggingFaceConfig.USER_AGENT)
             .header("X-Wait-For-Model", "true")
-            .build()
+        if (expectVideo && url.contains("replicate", ignoreCase = true)) {
+            builder.header("Prefer", "wait")
+        }
+        val request = builder.build()
         try {
             http.newCall(request).execute().use { response ->
                 val bytes = response.body?.bytes() ?: ByteArray(0)
@@ -255,7 +258,7 @@ class HuggingFaceApiService(
                         if (!location.isNullOrBlank() && (bytes.isEmpty() || response.code == 202)) {
                             return pollUntilMedia(location, expectVideo, http)
                         }
-                        return interpretSuccess(bytes, expectVideo, http)
+                        return interpretSuccess(bytes, expectVideo, http, url)
                     }
                     503, 529 -> {
                         if (allowRetry) {
@@ -276,9 +279,13 @@ class HuggingFaceApiService(
                     400, 422 -> throw GenerationException(
                         if (expectVideo) GenerationError.VIDEO_UNAVAILABLE else GenerationError.INVALID_PROMPT
                     )
-                    401, 403 -> throw GenerationException(GenerationError.API)
+                    401, 403 -> throw GenerationException(
+                        if (expectVideo) GenerationError.VIDEO_UNAVAILABLE else GenerationError.API
+                    )
                     in 500..599 -> throw GenerationException(GenerationError.SERVER)
-                    else -> throw GenerationException(GenerationError.API)
+                    else -> throw GenerationException(
+                        if (expectVideo) GenerationError.VIDEO_UNAVAILABLE else GenerationError.API
+                    )
                 }
             }
         } catch (e: GenerationException) {
@@ -309,7 +316,8 @@ class HuggingFaceApiService(
     private fun interpretSuccess(
         bytes: ByteArray,
         expectVideo: Boolean,
-        http: OkHttpClient
+        http: OkHttpClient,
+        submitUrl: String = ""
     ): ByteArray {
         if (expectVideo && MediaPayload.looksLikeVideo(bytes)) return bytes
         if (!expectVideo && MediaPayload.looksLikeImage(bytes)) return bytes
@@ -317,6 +325,9 @@ class HuggingFaceApiService(
         MediaPayload.decodeEmbeddedImage(asText)?.let { decoded ->
             if (expectVideo && MediaPayload.looksLikeVideo(decoded)) return decoded
             if (!expectVideo && MediaPayload.looksLikeImage(decoded)) return decoded
+        }
+        if (expectVideo && isFalQueue(asText)) {
+            return pollFalQueue(asText, submitUrl, http)
         }
         val statusUrl = MediaPayload.queueStatusUrl(asText)
         if (statusUrl != null) {
@@ -394,7 +405,7 @@ class HuggingFaceApiService(
             )
             else -> emptyList()
         }
-        return (fromHub + hardcoded).distinct()
+        return (hardcoded + fromHub).distinct()
     }
 
     private fun fetchProviderUrls(model: String, task: String): List<String> {
@@ -435,9 +446,95 @@ class HuggingFaceApiService(
         val aspect = if (width != null && height != null && width >= height) "16:9" else "9:16"
         val fal = """{"prompt":"$quoted","aspect_ratio":"$aspect","enable_prompt_expansion":false}"""
         return when {
-            url.contains("replicate", ignoreCase = true) -> listOf(replicate, promptOnly)
-            else -> listOf(promptOnly, fal)
+            url.contains("replicate", ignoreCase = true) -> listOf(replicate)
+            else -> listOf(fal, promptOnly)
         }.distinct()
+    }
+
+    private fun withFalQueue(url: String): String {
+        if (!url.contains("fal-ai", ignoreCase = true)) return url
+        if (url.contains("_subdomain=")) return url
+        return if (url.contains("?")) "$url&_subdomain=queue" else "$url?_subdomain=queue"
+    }
+
+    private fun isFalQueue(text: String): Boolean {
+        val json = runCatching { JSONObject(text.trim()) }.getOrNull() ?: return false
+        val id = json.optString("request_id").ifBlank { json.optString("requestId") }
+        val response = json.optString("response_url").ifBlank { json.optString("responseUrl") }
+        return id.isNotBlank() && response.startsWith("http")
+    }
+
+    private fun pollFalQueue(submitText: String, submitUrl: String, http: OkHttpClient): ByteArray {
+        val json = JSONObject(submitText.trim())
+        val responseUrl = json.optString("response_url").ifBlank { json.optString("responseUrl") }
+        if (!responseUrl.startsWith("http")) {
+            throw GenerationException(GenerationError.VIDEO_UNAVAILABLE)
+        }
+        val (statusUrl, resultUrl) = falQueueUrls(submitUrl, responseUrl)
+        try {
+            repeat(90) { index ->
+                if (index > 0) Thread.sleep(2_000L)
+                val statusText = getText(statusUrl, http) ?: return@repeat
+                if (MediaPayload.queueFailed(statusText)) {
+                    throw GenerationException(GenerationError.VIDEO_UNAVAILABLE)
+                }
+                val status = runCatching { JSONObject(statusText).optString("status") }.getOrNull().orEmpty()
+                if (status.equals("COMPLETED", ignoreCase = true) ||
+                    status.equals("complete", ignoreCase = true) ||
+                    status.equals("OK", ignoreCase = true)
+                ) {
+                    val resultText = getText(resultUrl, http)
+                        ?: throw GenerationException(GenerationError.VIDEO_UNAVAILABLE)
+                    val mediaUrl = MediaPayload.extractHttpUrl(resultText)
+                    if (!mediaUrl.isNullOrBlank() && MediaPayload.isMediaFileUrl(mediaUrl)) {
+                        return executeGet(mediaUrl, expectVideo = true, http)
+                    }
+                    MediaPayload.decodeEmbeddedImage(resultText)?.let { decoded ->
+                        if (MediaPayload.looksLikeVideo(decoded)) return decoded
+                    }
+                    throw GenerationException(GenerationError.VIDEO_UNAVAILABLE)
+                }
+            }
+        } catch (e: GenerationException) {
+            throw e
+        } catch (_: Exception) {
+            throw GenerationException(GenerationError.VIDEO_UNAVAILABLE)
+        }
+        throw GenerationException(GenerationError.VIDEO_UNAVAILABLE)
+    }
+
+    private fun falQueueUrls(submitUrl: String, responseUrl: String): Pair<String, String> {
+        val submit = java.net.URI(submitUrl)
+        val path = java.net.URI(responseUrl).path.orEmpty()
+        val query = submit.rawQuery?.let { "?$it" }.orEmpty()
+        val base = if (submit.host.equals("router.huggingface.co", ignoreCase = true)) {
+            "${submit.scheme}://${submit.host}/fal-ai"
+        } else {
+            "${submit.scheme}://${submit.host}"
+        }
+        val resultUrl = "$base$path$query"
+        return "$resultUrl".let { result ->
+            val trimmed = result.substringBefore("?").removeSuffix("/") + query
+            val status = result.substringBefore("?").removeSuffix("/") + "/status" + query
+            status to trimmed
+        }
+    }
+
+    private fun getText(url: String, http: OkHttpClient): String? {
+        val request = Request.Builder()
+            .url(url)
+            .get()
+            .header("Authorization", "Bearer ${HuggingFaceConfig.apiKey}")
+            .header("User-Agent", HuggingFaceConfig.USER_AGENT)
+            .header("Accept", "application/json")
+            .build()
+        return http.newCall(request).execute().use { response ->
+            when (response.code) {
+                in 200..299 -> response.body?.string()
+                401, 403, 404 -> throw GenerationException(GenerationError.VIDEO_UNAVAILABLE)
+                else -> null
+            }
+        }
     }
 
     private fun buildInputJson(
@@ -490,7 +587,12 @@ class HuggingFaceApiService(
         }
     }
 
-    private fun executeGet(url: String, expectVideo: Boolean, http: OkHttpClient = if (expectVideo) videoClient else client): ByteArray {
+    private fun executeGet(
+        url: String,
+        expectVideo: Boolean,
+        http: OkHttpClient = if (expectVideo) videoClient else client,
+        hop: Int = 0
+    ): ByteArray {
         val request = Request.Builder()
             .url(url)
             .get()
@@ -510,6 +612,10 @@ class HuggingFaceApiService(
             MediaPayload.decodeEmbeddedImage(text)?.let { decoded ->
                 if (expectVideo && MediaPayload.looksLikeVideo(decoded)) return decoded
                 if (!expectVideo && MediaPayload.looksLikeImage(decoded)) return decoded
+            }
+            val nested = MediaPayload.extractHttpUrl(text)
+            if (hop < 2 && !nested.isNullOrBlank() && nested != url && MediaPayload.isMediaFileUrl(nested)) {
+                return executeGet(nested, expectVideo, http, hop + 1)
             }
             throw GenerationException(
                 if (expectVideo) GenerationError.VIDEO_UNAVAILABLE else GenerationError.EMPTY_RESPONSE

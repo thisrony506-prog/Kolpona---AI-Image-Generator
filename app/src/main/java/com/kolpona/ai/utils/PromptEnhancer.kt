@@ -3,6 +3,7 @@ package com.kolpona.ai.utils
 import com.kolpona.ai.data.api.TextNormalizeService
 import com.kolpona.ai.domain.model.ImageStyle
 import com.kolpona.ai.domain.model.MediaKind
+import com.kolpona.ai.prompt.LanguageScripts
 import com.kolpona.ai.prompt.OptimizedGeneration
 import com.kolpona.ai.prompt.PromptTemplates
 import com.kolpona.ai.prompt.SceneIntent
@@ -22,10 +23,16 @@ class PromptEnhancer(
         mediaType: MediaKind
     ): OptimizedGeneration {
         val cleaned = prompt.trim().replace(Regex("\\s+"), " ")
-        val understood = try {
-            normalizer?.understand(cleaned) ?: cleaned
-        } catch (_: Exception) {
+        val englishEnough = LanguageScripts.looksLikeEnglish(cleaned) &&
+            LanguageScripts.nonLatinRatio(cleaned) < 0.08f
+        val understood = if (englishEnough) {
             cleaned
+        } else {
+            try {
+                normalizer?.understand(cleaned) ?: cleaned
+            } catch (_: Exception) {
+                cleaned
+            }
         }
         val intent = SceneIntent.extract(cleaned, understood)
         val withText = preserveRequestedText(understood, intent)
@@ -50,7 +57,7 @@ class PromptEnhancer(
         val clothing = intent.kind == SceneKind.FASHION || PromptTemplates.looksLikeClothing(prompt)
         if (!clothing) return prompt
         val words = prompt.split(Regex("\\s+")).filter { it.isNotBlank() }
-        if (words.size > 8) return prompt
+        if (words.size > 4) return prompt
         val lower = prompt.lowercase()
         val alreadyHasSubject = SUBJECT_WORDS.any { lower.contains(it) }
         if (alreadyHasSubject) return prompt

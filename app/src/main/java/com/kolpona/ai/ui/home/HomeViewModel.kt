@@ -223,17 +223,15 @@ class HomeViewModel(
             _events.tryEmit(HomeEvent.NeedCredits)
             return
         }
-        val resolved = resolvePrompt(typed, snapshot.lastPrompt)
         _state.update { it.copy(prompt = "", pendingPrompt = typed, error = null) }
-        generateInternal(displayText = typed, generationPrompt = resolved, snapshot = snapshot)
+        generateInternal(displayText = typed, generationPrompt = typed, snapshot = snapshot)
     }
 
     fun retry() {
         val snapshot = _state.value
         val text = snapshot.pendingPrompt.ifBlank { snapshot.prompt }.trim()
         if (text.isEmpty() || snapshot.isGenerating) return
-        val resolved = resolvePrompt(text, snapshot.lastPrompt)
-        generateInternal(displayText = text, generationPrompt = resolved, snapshot = snapshot)
+        generateInternal(displayText = text, generationPrompt = text, snapshot = snapshot)
     }
 
     fun regenerate(image: GeneratedImage) {
@@ -257,17 +255,8 @@ class HomeViewModel(
 
     private fun generateInternal(displayText: String, generationPrompt: String, snapshot: HomeUiState) {
         viewModelScope.launch {
-            val followUp = snapshot.lastPrompt.isNotBlank() && generationPrompt != displayText
             val withoutError = snapshot.messages.filterNot { it is ChatItem.Error || it is ChatItem.Pending }
-            val withUser = withoutError + ChatItem.User(displayText, "u-${System.currentTimeMillis()}")
-            val withHint = if (followUp) {
-                withUser + ChatItem.AssistantText(
-                    "Updating the previous creation with that.",
-                    "t-${System.currentTimeMillis()}"
-                )
-            } else {
-                withUser
-            }
+            val withHint = withoutError + ChatItem.User(displayText, "u-${System.currentTimeMillis()}")
             _state.update {
                 it.copy(
                     isGenerating = true,
@@ -297,11 +286,11 @@ class HomeViewModel(
                             error = null,
                             pendingPrompt = "",
                             successfulGenerations = count,
-                            lastPrompt = generationPrompt,
+                            lastPrompt = displayText,
                             messages = ready
                         )
                     }
-                    persist(ready, generationPrompt, displayText)
+                    persist(ready, displayText, displayText)
                     if (count % 2 == 0) {
                         _events.emit(HomeEvent.ShowInterstitial)
                     }
@@ -379,16 +368,6 @@ class HomeViewModel(
         }
         val title = messages.filterIsInstance<ChatItem.User>().firstOrNull()?.text ?: titleHint
         chats.replaceMessages(id, title, lastPrompt, messages)
-    }
-
-    private fun resolvePrompt(typed: String, last: String): String {
-        if (last.isBlank()) return typed
-        val words = typed.split(Regex("\\s+")).filter { it.isNotBlank() }
-        val follow = words.size <= 6 && typed.length <= 64 &&
-            !typed.contains("create", ignoreCase = true) &&
-            !typed.contains("generate", ignoreCase = true) &&
-            !typed.contains("make a", ignoreCase = true)
-        return if (follow) "$last, $typed" else typed
     }
 
     companion object {

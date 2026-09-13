@@ -80,6 +80,12 @@
     <string name="generate_video_short">Generate Video</string>
     <string name="creating_image">Creating your image...</string>
     <string name="creating_video">Creating your video...</string>
+    <string name="creating_stage_image_1">Reading your idea</string>
+    <string name="creating_stage_image_2">Painting light and detail</string>
+    <string name="creating_stage_image_3">Bringing it to life</string>
+    <string name="creating_stage_video_1">Directing the scene</string>
+    <string name="creating_stage_video_2">Animating natural motion</string>
+    <string name="creating_stage_video_3">Rendering your video</string>
     <string name="try_again">Try Again</string>
     <string name="generation_failed">Generation failed. Your credits were not deducted.</string>
     <string name="regenerate">Regenerate</string>

@@ -98,16 +98,21 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -151,6 +156,7 @@ import com.kolpona.ai.utils.formatArgs
 import com.kolpona.ai.utils.messageRes
 import java.io.File
 import java.util.Locale
+import kotlinx.coroutines.delay
 
 private enum class StudioSheet { None, Ratio, Quality, Category }
 
@@ -318,7 +324,10 @@ fun HomeScreen(
                                 },
                                 enabled = !state.isGenerating
                             )
-                            is ChatItem.Pending -> PendingBubble(video = state.mediaType == MediaKind.VIDEO)
+                            is ChatItem.Pending -> GeneratingCard(
+                                video = state.mediaType == MediaKind.VIDEO,
+                                aspect = state.aspectRatio
+                            )
                             is ChatItem.Error -> ErrorBubble(error = item.error, onRetry = viewModel::retry)
                         }
                     }
@@ -1056,31 +1065,97 @@ private fun LoopingVideo(path: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun PendingBubble(video: Boolean) {
-    val pulse = rememberInfiniteTransition(label = "pending")
-    val alpha by pulse.animateFloat(
-        initialValue = 0.45f,
+private fun GeneratingCard(video: Boolean, aspect: AspectRatio) {
+    val preview = aspect.shortLabel.split(":").let {
+        val w = it.getOrNull(0)?.toFloatOrNull() ?: 1f
+        val h = it.getOrNull(1)?.toFloatOrNull() ?: 1f
+        (w / h).coerceIn(0.55f, 1.85f)
+    }
+    val motion = rememberInfiniteTransition(label = "generating")
+    val sweep by motion.animateFloat(
+        initialValue = 0f,
         targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(900), RepeatMode.Reverse),
-        label = "alpha"
+        animationSpec = infiniteRepeatable(tween(1600, easing = LinearEasing)),
+        label = "sweep"
     )
-    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+    val pulse by motion.animateFloat(
+        initialValue = 0.88f,
+        targetValue = 1.08f,
+        animationSpec = infiniteRepeatable(tween(1100), RepeatMode.Reverse),
+        label = "pulse"
+    )
+    val spin by motion.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(tween(7000, easing = LinearEasing)),
+        label = "spin"
+    )
+    val stages = if (video) {
+        listOf(R.string.creating_stage_video_1, R.string.creating_stage_video_2, R.string.creating_stage_video_3)
+    } else {
+        listOf(R.string.creating_stage_image_1, R.string.creating_stage_image_2, R.string.creating_stage_image_3)
+    }
+    var stage by remember { mutableIntStateOf(0) }
+    LaunchedEffect(video) {
+        while (true) {
+            delay(2200)
+            stage = (stage + 1) % stages.size
+        }
+    }
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
         KolponaMark(size = 28.dp)
         Spacer(Modifier.size(8.dp))
-        Row(
+        Column(
             modifier = Modifier
-                .clip(RoundedCornerShape(20.dp))
+                .widthIn(max = 340.dp)
+                .clip(RoundedCornerShape(22.dp))
                 .background(GlassFill)
-                .border(1.dp, GlassStroke, RoundedCornerShape(20.dp))
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .border(1.dp, GlassStroke, RoundedCornerShape(22.dp))
+                .padding(10.dp)
         ) {
-            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = ElectricBlue)
-            Spacer(Modifier.size(10.dp))
             Text(
                 text = stringResource(if (video) R.string.creating_video else R.string.creating_image),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MutedGray,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(preview)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color(0xFF070B16)),
+                contentAlignment = Alignment.Center
+            ) {
+                Canvas(Modifier.fillMaxSize()) {
+                    val w = size.width
+                    val h = size.height
+                    rotate(spin) {
+                        drawCircle(
+                            brush = Brush.sweepGradient(listOf(ElectricBlue, NeonViolet, PinkAccent, ElectricBlue)),
+                            radius = minOf(w, h) * 0.28f,
+                            center = center,
+                            style = Stroke(width = 5.dp.toPx())
+                        )
+                    }
+                    drawRect(
+                        brush = Brush.verticalGradient(
+                            0f to Color.Transparent,
+                            0.5f to ElectricBlue.copy(alpha = 0.35f),
+                            1f to Color.Transparent
+                        ),
+                        topLeft = Offset(0f, h * sweep - 28.dp.toPx()),
+                        size = androidx.compose.ui.geometry.Size(w, 56.dp.toPx())
+                    )
+                }
+                KolponaMark(size = 64.dp, modifier = Modifier.scale(pulse))
+            }
+            Spacer(Modifier.height(10.dp))
+            Text(
+                text = stringResource(stages[stage]),
                 style = MaterialTheme.typography.bodyLarge,
-                color = SoftWhite.copy(alpha = alpha)
+                color = SoftWhite,
+                fontWeight = FontWeight.Medium
             )
         }
     }

@@ -51,20 +51,11 @@ object MediaPayload {
         }
         runCatching {
             urlFromJson(JSONObject(trimmed))
-        }.getOrNull()?.let { return it }
+        }.getOrNull()?.takeIf { isMediaFileUrl(it) }?.let { return it }
         val regex = Regex("""https?://[^\s"'<>\\]+""")
         return regex.findAll(trimmed)
             .map { it.value.trimEnd(',', ')', ']', '.', ';') }
-            .firstOrNull { candidate ->
-                val lower = candidate.lowercase()
-                lower.contains(".mp4") ||
-                    lower.contains(".webm") ||
-                    lower.contains("video") ||
-                    lower.contains("huggingface") ||
-                    lower.contains("fal.media") ||
-                    lower.contains("replicate") ||
-                    lower.contains("cloudflare")
-            }
+            .firstOrNull { isMediaFileUrl(it) }
     }
 
     fun loadingWaitSeconds(text: String): Int? {
@@ -88,14 +79,39 @@ object MediaPayload {
         json.optJSONObject("status")?.optString("url")
             ?.takeIf { it.startsWith("http") }
             ?.let { return it }
+        json.optJSONObject("urls")?.optString("get")
+            ?.takeIf { it.startsWith("http") }
+            ?.let { return it }
         val status = json.optString("status").lowercase()
         val requestId = json.optString("request_id").ifBlank { json.optString("requestId") }
-        if ((status.contains("queue") || status.contains("in_progress") || status == "pending") &&
+        if ((status.contains("queue") || status.contains("in_progress") || status == "pending" ||
+                status == "starting" || status == "processing") &&
             requestId.isNotBlank()
         ) {
             json.optString("url").takeIf { it.startsWith("http") }?.let { return it }
         }
         return null
+    }
+
+    fun queueResponseUrl(text: String): String? {
+        val json = runCatching { JSONObject(text.trim()) }.getOrNull() ?: return null
+        json.optString("response_url").takeIf { it.startsWith("http") }?.let { return it }
+        json.optString("responseUrl").takeIf { it.startsWith("http") }?.let { return it }
+        json.optJSONObject("urls")?.optString("get")
+            ?.takeIf { it.startsWith("http") }
+            ?.let { return it }
+        return null
+    }
+
+    fun isMediaFileUrl(url: String): Boolean {
+        val lower = url.lowercase()
+        if (lower.contains("/status") || lower.contains("/cancel")) return false
+        if (lower.contains("queue.fal.run") && !lower.contains(".mp4")) return false
+        return lower.contains(".mp4") ||
+            lower.contains(".webm") ||
+            lower.contains("fal.media") ||
+            lower.contains("replicate.delivery") ||
+            lower.contains("wavespeed")
     }
 
     fun queueDone(text: String): Boolean {
@@ -105,8 +121,7 @@ object MediaPayload {
             status == "complete" ||
             status == "succeeded" ||
             status == "success" ||
-            extractHttpUrl(text) != null ||
-            decodeEmbeddedImage(text) != null
+            status == "ready"
     }
 
     fun queueFailed(text: String): Boolean {

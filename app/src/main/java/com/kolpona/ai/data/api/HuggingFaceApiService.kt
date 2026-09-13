@@ -22,10 +22,10 @@ class HuggingFaceApiService(
     val isConfigured: Boolean get() = HuggingFaceConfig.isConfigured
 
     private val videoClient: OkHttpClient = client.newBuilder()
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(300, TimeUnit.SECONDS)
+        .connectTimeout(20, TimeUnit.SECONDS)
+        .readTimeout(240, TimeUnit.SECONDS)
         .writeTimeout(45, TimeUnit.SECONDS)
-        .callTimeout(320, TimeUnit.SECONDS)
+        .callTimeout(260, TimeUnit.SECONDS)
         .build()
 
     private val chatClient: OkHttpClient = client.newBuilder()
@@ -65,16 +65,14 @@ class HuggingFaceApiService(
     ): ByteArray = withContext(Dispatchers.IO) {
         if (!isConfigured) throw GenerationException(GenerationError.VIDEO_UNAVAILABLE)
         val media = "application/json; charset=utf-8".toMediaType()
-        val bodies = videoBodies(prompt, width, height, negativePrompt)
         val urls = videoUrls(model)
         var last: GenerationException? = null
         for (url in urls) {
-            for (body in bodies) {
+            for (body in videoBodiesFor(url, prompt, width, height)) {
                 try {
                     return@withContext execute(url, body, media, expectVideo = true, allowRetry = true)
                 } catch (e: GenerationException) {
                     last = e
-                    if (e.error == GenerationError.RATE_LIMIT) continue
                 }
             }
         }
@@ -275,7 +273,9 @@ class HuggingFaceApiService(
                     404, 410 -> throw GenerationException(
                         if (expectVideo) GenerationError.VIDEO_UNAVAILABLE else GenerationError.API
                     )
-                    400, 422 -> throw GenerationException(GenerationError.INVALID_PROMPT)
+                    400, 422 -> throw GenerationException(
+                        if (expectVideo) GenerationError.VIDEO_UNAVAILABLE else GenerationError.INVALID_PROMPT
+                    )
                     401, 403 -> throw GenerationException(GenerationError.API)
                     in 500..599 -> throw GenerationException(GenerationError.SERVER)
                     else -> throw GenerationException(GenerationError.API)
@@ -332,8 +332,8 @@ class HuggingFaceApiService(
     }
 
     private fun pollUntilMedia(url: String, expectVideo: Boolean, http: OkHttpClient): ByteArray {
-        repeat(40) { index ->
-            if (index > 0) Thread.sleep(3_000L)
+        repeat(50) { index ->
+            if (index > 0) Thread.sleep(4_000L)
             val request = Request.Builder()
                 .url(url)
                 .get()
@@ -355,14 +355,15 @@ class HuggingFaceApiService(
                     if (expectVideo && MediaPayload.looksLikeVideo(decoded)) return decoded
                     if (!expectVideo && MediaPayload.looksLikeImage(decoded)) return decoded
                 }
-                val nested = MediaPayload.extractHttpUrl(text)
-                if (!nested.isNullOrBlank() && nested != url) {
-                    val ready = MediaPayload.queueDone(text) ||
-                        nested.contains(".mp4", ignoreCase = true) ||
-                        nested.contains("fal.media", ignoreCase = true) ||
-                        nested.contains("replicate", ignoreCase = true) ||
-                        nested.contains("wavespeed", ignoreCase = true)
-                    if (ready) return executeGet(nested, expectVideo, http)
+                val mediaUrl = MediaPayload.extractHttpUrl(text)
+                if (!mediaUrl.isNullOrBlank() && mediaUrl != url && MediaPayload.isMediaFileUrl(mediaUrl)) {
+                    return executeGet(mediaUrl, expectVideo, http)
+                }
+                if (MediaPayload.queueDone(text)) {
+                    val result = MediaPayload.queueResponseUrl(text)
+                    if (!result.isNullOrBlank() && result != url) {
+                        return executeGet(result, expectVideo, http)
+                    }
                 }
             }
         }
@@ -374,6 +375,11 @@ class HuggingFaceApiService(
     private fun videoUrls(model: String): List<String> {
         val fromHub = runCatching { fetchProviderUrls(model, "text-to-video") }.getOrNull().orEmpty()
         val hardcoded = when {
+            model.contains("A14B", ignoreCase = true) -> listOf(
+                "${HuggingFaceConfig.ROUTER_HOST}/fal-ai/fal-ai/wan/v2.2-a14b/text-to-video",
+                "${HuggingFaceConfig.ROUTER_HOST}/replicate/wan-video/wan-2.2-t2v-fast",
+                "${HuggingFaceConfig.ROUTER_HOST}/wavespeed/wavespeed-ai/wan-2.2/t2v-720p"
+            )
             model.contains("Wan2.2", ignoreCase = true) -> listOf(
                 "${HuggingFaceConfig.ROUTER_HOST}/fal-ai/fal-ai/wan/v2.2-5b/text-to-video",
                 "${HuggingFaceConfig.ROUTER_HOST}/replicate/wan-video/wan-2.2-5b-fast",
@@ -381,6 +387,10 @@ class HuggingFaceApiService(
             )
             model.contains("Wan2.1", ignoreCase = true) -> listOf(
                 "${HuggingFaceConfig.ROUTER_HOST}/fal-ai/fal-ai/wan/v2.1/1.3b/text-to-video"
+            )
+            model.contains("Hunyuan", ignoreCase = true) -> listOf(
+                "${HuggingFaceConfig.ROUTER_HOST}/fal-ai/fal-ai/hunyuan-video",
+                "${HuggingFaceConfig.ROUTER_HOST}/wavespeed/wavespeed-ai/hunyuan-video/t2v"
             )
             else -> emptyList()
         }
@@ -413,18 +423,21 @@ class HuggingFaceApiService(
         return urls
     }
 
-    private fun videoBodies(
+    private fun videoBodiesFor(
+        url: String,
         prompt: String,
         width: Int?,
-        height: Int?,
-        negativePrompt: String?
+        height: Int?
     ): List<String> {
         val quoted = jsonEscape(prompt.take(1400))
         val promptOnly = """{"prompt":"$quoted"}"""
-        val inputsOnly = """{"inputs":"$quoted"}"""
+        val replicate = """{"input":{"prompt":"$quoted"}}"""
         val aspect = if (width != null && height != null && width >= height) "16:9" else "9:16"
-        val fal = """{"prompt":"$quoted","aspect_ratio":"$aspect"}"""
-        return listOf(promptOnly, inputsOnly, fal).distinct()
+        val fal = """{"prompt":"$quoted","aspect_ratio":"$aspect","enable_prompt_expansion":false}"""
+        return when {
+            url.contains("replicate", ignoreCase = true) -> listOf(replicate, promptOnly)
+            else -> listOf(promptOnly, fal)
+        }.distinct()
     }
 
     private fun buildInputJson(

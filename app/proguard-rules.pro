@@ -1,6 +1,6 @@
 # Kolpona release rules
 -keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod,SourceFile,LineNumberTable
--keep class com.kolpona.app.** { *; }
+-keep class com.kolpona.ai.** { *; }
 
 # OkHttp / Okio
 -dontwarn okhttp3.**
@@ -36,7 +36,7 @@
 -keep class androidx.datastore.** { *; }
 
 # Keep BuildConfig fields (values stay in the APK; do not log them)
--keep class com.kolpona.app.BuildConfig { *; }
+-keep class com.kolpona.ai.BuildConfig { *; }
 
 -assumenosideeffects class android.util.Log {
     public static int v(...);

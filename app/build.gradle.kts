@@ -94,6 +94,7 @@ android {
 
     kotlinOptions {
         jvmTarget = "17"
+        freeCompilerArgs += listOf("-Xskip-prerelease-check")
     }
 
     buildFeatures {

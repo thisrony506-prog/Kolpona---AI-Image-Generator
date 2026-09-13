@@ -236,20 +236,25 @@ class StartIoAdManager(
 
     private fun loadFirstAvailable(
         startAppAdClass: Class<*>,
-        ad: Any,
         activity: Activity,
         modeHints: List<String>,
-        onLoaded: () -> Unit,
+        onLoaded: (Any) -> Unit,
         onFailed: () -> Unit
     ) {
         val remaining = modeHints.toMutableList()
         fun tryNext() {
             val hint = remaining.removeFirstOrNull()
+            val ad = try {
+                startAppAdClass.getConstructor(Context::class.java).newInstance(activity)
+            } catch (_: Throwable) {
+                onFailed()
+                return
+            }
             val listener = adListener { ready ->
                 main.post {
                     if (ready) {
                         Log.d(TAG, "ad loaded mode=$hint")
-                        onLoaded()
+                        onLoaded(ad)
                     } else if (remaining.isNotEmpty()) {
                         tryNext()
                     } else {
@@ -257,18 +262,16 @@ class StartIoAdManager(
                     }
                 }
             }
-            val loaded = if (hint == null) {
+            val started = if (hint == null) {
                 invokeLoad(ad, null, listener)
             } else {
-                val mode = adMode(startAppAdClass, hint)
-                invokeLoad(ad, mode, listener)
+                invokeLoad(ad, adMode(startAppAdClass, hint), listener)
             }
-            if (!loaded) {
+            if (!started) {
                 if (remaining.isNotEmpty()) tryNext() else onFailed()
             }
         }
         tryNext()
-        activity.hashCode() // keep activity referenced
     }
 
     private fun invokeLoad(ad: Any, mode: Any?, listener: Any): Boolean {

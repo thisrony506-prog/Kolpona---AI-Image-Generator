@@ -133,9 +133,26 @@ fun HomeScreen(
 
     val storagePermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
+    ) { }
+
+    val audioPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
     ) { granted ->
-        if (granted || Build.VERSION.SDK_INT >= 29) {
-            // Download is triggered from the image row after permission.
+        if (granted) {
+            try {
+                voiceLauncher.launch(
+                    Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                        putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                        putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+                        putExtra(RecognizerIntent.EXTRA_PROMPT, context.getString(R.string.voice_prompt))
+                        putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+                    }
+                )
+            } catch (_: ActivityNotFoundException) {
+                Toast.makeText(context, context.getString(R.string.voice_unavailable), Toast.LENGTH_LONG).show()
+            }
+        } else {
+            Toast.makeText(context, context.getString(R.string.voice_unavailable), Toast.LENGTH_LONG).show()
         }
     }
 
@@ -471,7 +488,7 @@ private fun AssistantImageBubble(
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 TextButton(onClick = onDownload, modifier = Modifier.height(44.dp)) {
-                    Icon(Icons.Outlined.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Outlined.FileDownload, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.size(6.dp))
                     Text(stringResource(R.string.download))
                 }

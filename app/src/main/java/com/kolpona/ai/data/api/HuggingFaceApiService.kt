@@ -1,12 +1,15 @@
 package com.kolpona.ai.data.api
 
 import com.kolpona.ai.domain.model.GenerationError
+import com.kolpona.ai.prompt.LanguageScripts
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.IOException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
@@ -18,10 +21,17 @@ class HuggingFaceApiService(
     val isConfigured: Boolean get() = HuggingFaceConfig.isConfigured
 
     private val videoClient: OkHttpClient = client.newBuilder()
-        .connectTimeout(45, TimeUnit.SECONDS)
-        .readTimeout(240, TimeUnit.SECONDS)
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(300, TimeUnit.SECONDS)
         .writeTimeout(45, TimeUnit.SECONDS)
-        .callTimeout(260, TimeUnit.SECONDS)
+        .callTimeout(320, TimeUnit.SECONDS)
+        .build()
+
+    private val chatClient: OkHttpClient = client.newBuilder()
+        .connectTimeout(12, TimeUnit.SECONDS)
+        .readTimeout(20, TimeUnit.SECONDS)
+        .writeTimeout(12, TimeUnit.SECONDS)
+        .callTimeout(25, TimeUnit.SECONDS)
         .build()
 
     suspend fun generateImage(
@@ -39,25 +49,115 @@ class HuggingFaceApiService(
             expectVideo = false,
             width = w,
             height = h,
-            negativePrompt = null,
+            negativePrompt = negativePrompt,
             steps = 28
         )
     }
 
     suspend fun generateVideo(
         prompt: String,
-        model: String = HuggingFaceConfig.VIDEO_MODEL
+        model: String = HuggingFaceConfig.VIDEO_MODEL,
+        width: Int? = null,
+        height: Int? = null,
+        negativePrompt: String? = null
     ): ByteArray = withContext(Dispatchers.IO) {
         if (!isConfigured) throw GenerationException(GenerationError.VIDEO_UNAVAILABLE)
-        postModel(
-            model = model,
-            prompt = prompt,
-            expectVideo = true,
-            width = null,
-            height = null,
-            negativePrompt = null,
-            steps = null
+        val media = "application/json; charset=utf-8".toMediaType()
+        val bodies = videoBodies(prompt, width, height, negativePrompt)
+        val urls = videoUrls(model)
+        var last: GenerationException? = null
+        for (url in urls) {
+            for (body in bodies) {
+                try {
+                    return@withContext execute(url, body, media, expectVideo = true, allowRetry = true)
+                } catch (e: GenerationException) {
+                    last = e
+                    if (e.error == GenerationError.API || e.error == GenerationError.RATE_LIMIT) throw e
+                }
+            }
+        }
+        throw last ?: GenerationException(GenerationError.VIDEO_UNAVAILABLE)
+    }
+
+    suspend fun rewriteToEnglish(prompt: String): String? = withContext(Dispatchers.IO) {
+        if (!isConfigured) return@withContext null
+        chatRewrite(prompt)?.let { return@withContext it }
+        nllbTranslate(prompt)
+    }
+
+    private fun chatRewrite(prompt: String): String? {
+        val media = "application/json; charset=utf-8".toMediaType()
+        val system = "Rewrite the user's request as a faithful English prompt for an image or video generator. " +
+            "Keep the exact meaning, subjects, clothing, places, colors, camera, and actions. " +
+            "Keep cultural names such as sari, lungi, panjabi, kurta, rickshaw, and city names. " +
+            "Do not add quality slogans such as 8k, ultra realistic, masterpiece, or highly detailed. " +
+            "Output only the rewritten prompt."
+        for (model in HuggingFaceConfig.CHAT_MODELS) {
+            val payload = JSONObject()
+                .put("model", model)
+                .put(
+                    "messages",
+                    JSONArray()
+                        .put(JSONObject().put("role", "system").put("content", system))
+                        .put(JSONObject().put("role", "user").put("content", prompt.take(800)))
+                )
+                .put("max_tokens", 220)
+                .put("temperature", 0.1)
+                .toString()
+            val request = Request.Builder()
+                .url(HuggingFaceConfig.CHAT_URL)
+                .post(payload.toRequestBody(media))
+                .header("Authorization", "Bearer ${HuggingFaceConfig.apiKey}")
+                .header("Content-Type", "application/json")
+                .header("User-Agent", HuggingFaceConfig.USER_AGENT)
+                .build()
+            val text = runCatching {
+                chatClient.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) return@use null
+                    response.body?.string()
+                }
+            }.getOrNull() ?: continue
+            val rewritten = MediaPayload.chatText(text).orEmpty().trim().trim('"')
+            if (isUsefulRewrite(prompt, rewritten)) return rewritten.take(1400)
+        }
+        return null
+    }
+
+    private fun nllbTranslate(prompt: String): String? {
+        val src = nllbSource(prompt) ?: return null
+        val media = "application/json; charset=utf-8".toMediaType()
+        val body = JSONObject()
+            .put("inputs", prompt.take(800))
+            .put(
+                "parameters",
+                JSONObject()
+                    .put("src_lang", src)
+                    .put("tgt_lang", "eng_Latn")
+            )
+            .toString()
+        val urls = listOf(
+            "${HuggingFaceConfig.INFERENCE_BASE}/${HuggingFaceConfig.TRANSLATE_MODEL}",
+            "${HuggingFaceConfig.ROUTER_BASE}/${HuggingFaceConfig.TRANSLATE_MODEL}"
         )
+        for (url in urls) {
+            val request = Request.Builder()
+                .url(url)
+                .post(body.toRequestBody(media))
+                .header("Authorization", "Bearer ${HuggingFaceConfig.apiKey}")
+                .header("Content-Type", "application/json")
+                .header("X-Wait-For-Model", "true")
+                .header("User-Agent", HuggingFaceConfig.USER_AGENT)
+                .build()
+            val text = runCatching {
+                chatClient.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) return@use null
+                    response.body?.string()
+                }
+            }.getOrNull() ?: continue
+            val rewritten = MediaPayload.chatText(text).orEmpty().trim().trim('"')
+            if (isUsefulRewrite(prompt, rewritten)) return rewritten.take(1400)
+        }
+        return null
     }
 
     private fun postModel(
@@ -80,7 +180,7 @@ class HuggingFaceApiService(
         for (url in urls) {
             for (body in listOf(rich, simple).distinct()) {
                 try {
-                    return execute(url, body, media, expectVideo)
+                    return execute(url, body, media, expectVideo, allowRetry = true)
                 } catch (e: GenerationException) {
                     last = e
                 }
@@ -95,7 +195,8 @@ class HuggingFaceApiService(
         url: String,
         bodyJson: String,
         media: okhttp3.MediaType,
-        expectVideo: Boolean
+        expectVideo: Boolean,
+        allowRetry: Boolean
     ): ByteArray {
         val http = if (expectVideo) videoClient else client
         val request = Request.Builder()
@@ -112,23 +213,30 @@ class HuggingFaceApiService(
                 val bytes = response.body?.bytes() ?: ByteArray(0)
                 when (response.code) {
                     in 200..299 -> {
-                        if (expectVideo && MediaPayload.looksLikeVideo(bytes)) return bytes
-                        if (!expectVideo && MediaPayload.looksLikeImage(bytes)) return bytes
                         val asText = runCatching { bytes.decodeToString() }.getOrNull().orEmpty()
-                        MediaPayload.decodeEmbeddedImage(asText)?.let { decoded ->
-                            if (expectVideo && MediaPayload.looksLikeVideo(decoded)) return decoded
-                            if (!expectVideo && MediaPayload.looksLikeImage(decoded)) return decoded
+                        val wait = MediaPayload.loadingWaitSeconds(asText)
+                        if (wait != null && allowRetry) {
+                            Thread.sleep(wait * 1000L)
+                            return execute(url, bodyJson, media, expectVideo, allowRetry = false)
                         }
-                        val nested = MediaPayload.extractHttpUrl(asText)
-                        if (!nested.isNullOrBlank()) {
-                            return executeGet(nested, expectVideo)
+                        return interpretSuccess(bytes, expectVideo, http)
+                    }
+                    503, 529 -> {
+                        if (allowRetry) {
+                            val wait = MediaPayload.loadingWaitSeconds(
+                                runCatching { bytes.decodeToString() }.getOrNull().orEmpty()
+                            ) ?: 12
+                            Thread.sleep(wait * 1000L)
+                            return execute(url, bodyJson, media, expectVideo, allowRetry = false)
                         }
                         throw GenerationException(
-                            if (expectVideo) GenerationError.VIDEO_UNAVAILABLE else GenerationError.EMPTY_RESPONSE
+                            if (expectVideo) GenerationError.VIDEO_UNAVAILABLE else GenerationError.SERVER
                         )
                     }
-                    503 -> throw GenerationException(GenerationError.SERVER)
                     429 -> throw GenerationException(GenerationError.RATE_LIMIT)
+                    404, 410 -> throw GenerationException(
+                        if (expectVideo) GenerationError.VIDEO_UNAVAILABLE else GenerationError.API
+                    )
                     400, 422 -> throw GenerationException(GenerationError.INVALID_PROMPT)
                     401, 403 -> throw GenerationException(GenerationError.API)
                     in 500..599 -> throw GenerationException(GenerationError.SERVER)
@@ -149,11 +257,134 @@ class HuggingFaceApiService(
             throw GenerationException(
                 if (expectVideo) GenerationError.VIDEO_UNAVAILABLE else GenerationError.SERVER
             )
+        } catch (_: InterruptedException) {
+            throw GenerationException(
+                if (expectVideo) GenerationError.VIDEO_UNAVAILABLE else GenerationError.TIMEOUT
+            )
         } catch (_: Exception) {
             throw GenerationException(
                 if (expectVideo) GenerationError.VIDEO_UNAVAILABLE else GenerationError.UNKNOWN
             )
         }
+    }
+
+    private fun interpretSuccess(
+        bytes: ByteArray,
+        expectVideo: Boolean,
+        http: OkHttpClient
+    ): ByteArray {
+        if (expectVideo && MediaPayload.looksLikeVideo(bytes)) return bytes
+        if (!expectVideo && MediaPayload.looksLikeImage(bytes)) return bytes
+        val asText = runCatching { bytes.decodeToString() }.getOrNull().orEmpty()
+        MediaPayload.decodeEmbeddedImage(asText)?.let { decoded ->
+            if (expectVideo && MediaPayload.looksLikeVideo(decoded)) return decoded
+            if (!expectVideo && MediaPayload.looksLikeImage(decoded)) return decoded
+        }
+        val statusUrl = MediaPayload.queueStatusUrl(asText)
+        if (statusUrl != null) {
+            return pollUntilMedia(statusUrl, expectVideo, http)
+        }
+        val nested = MediaPayload.extractHttpUrl(asText)
+        if (!nested.isNullOrBlank()) {
+            return executeGet(nested, expectVideo, http)
+        }
+        throw GenerationException(
+            if (expectVideo) GenerationError.VIDEO_UNAVAILABLE else GenerationError.EMPTY_RESPONSE
+        )
+    }
+
+    private fun pollUntilMedia(url: String, expectVideo: Boolean, http: OkHttpClient): ByteArray {
+        repeat(40) { index ->
+            if (index > 0) Thread.sleep(3_000L)
+            val request = Request.Builder()
+                .url(url)
+                .get()
+                .header("Authorization", "Bearer ${HuggingFaceConfig.apiKey}")
+                .header("User-Agent", HuggingFaceConfig.USER_AGENT)
+                .build()
+            http.newCall(request).execute().use { response ->
+                val bytes = response.body?.bytes() ?: ByteArray(0)
+                if (!response.isSuccessful) return@use
+                if (expectVideo && MediaPayload.looksLikeVideo(bytes)) return bytes
+                if (!expectVideo && MediaPayload.looksLikeImage(bytes)) return bytes
+                val text = runCatching { bytes.decodeToString() }.getOrNull().orEmpty()
+                if (MediaPayload.queueFailed(text)) {
+                    throw GenerationException(
+                        if (expectVideo) GenerationError.VIDEO_UNAVAILABLE else GenerationError.EMPTY_RESPONSE
+                    )
+                }
+                MediaPayload.decodeEmbeddedImage(text)?.let { decoded ->
+                    if (expectVideo && MediaPayload.looksLikeVideo(decoded)) return decoded
+                    if (!expectVideo && MediaPayload.looksLikeImage(decoded)) return decoded
+                }
+                val nested = MediaPayload.extractHttpUrl(text)
+                if (!nested.isNullOrBlank() && nested != url && MediaPayload.queueDone(text)) {
+                    return executeGet(nested, expectVideo, http)
+                }
+            }
+        }
+        throw GenerationException(
+            if (expectVideo) GenerationError.VIDEO_UNAVAILABLE else GenerationError.TIMEOUT
+        )
+    }
+
+    private fun videoUrls(model: String): List<String> {
+        val falAliases = when {
+            model.contains("Wan2.2", ignoreCase = true) -> listOf(
+                "${HuggingFaceConfig.ROUTER_HOST}/fal-ai/fal-ai/wan/v2.2-5b/text-to-video",
+                "${HuggingFaceConfig.ROUTER_HOST}/fal-ai/fal-ai/wan-t2v"
+            )
+            model.contains("Wan2.1", ignoreCase = true) -> listOf(
+                "${HuggingFaceConfig.ROUTER_HOST}/fal-ai/fal-ai/wan-t2v"
+            )
+            model.contains("LTX", ignoreCase = true) -> listOf(
+                "${HuggingFaceConfig.ROUTER_HOST}/fal-ai/fal-ai/ltx-video"
+            )
+            else -> emptyList()
+        }
+        return (
+            falAliases +
+                listOf(
+                    "${HuggingFaceConfig.ROUTER_HOST}/fal-ai/$model",
+                    "${HuggingFaceConfig.ROUTER_HOST}/replicate/$model",
+                    "${HuggingFaceConfig.ROUTER_BASE}/$model",
+                    "${HuggingFaceConfig.INFERENCE_BASE}/$model"
+                )
+            ).distinct()
+    }
+
+    private fun videoBodies(
+        prompt: String,
+        width: Int?,
+        height: Int?,
+        negativePrompt: String?
+    ): List<String> {
+        val quoted = jsonEscape(prompt.take(1400))
+        val negative = negativePrompt?.takeIf { it.isNotBlank() }?.let { jsonEscape(it.take(400)) }
+        val promptOnly = """{"prompt":"$quoted"}"""
+        val inputsOnly = """{"inputs":"$quoted"}"""
+        val params = buildList {
+            add("\"num_frames\":25")
+            add("\"num_inference_steps\":8")
+            if (width != null && height != null) {
+                add("\"width\":$width")
+                add("\"height\":$height")
+            }
+            if (negative != null) add("\"negative_prompt\":\"$negative\"")
+        }.joinToString(",")
+        val richInputs = """{"inputs":"$quoted","parameters":{$params}}"""
+        val richPrompt = buildString {
+            append("{\"prompt\":\"$quoted\"")
+            if (width != null && height != null) {
+                val landscape = width >= height
+                append(",\"aspect_ratio\":\"")
+                append(if (landscape) "16:9" else "9:16")
+                append('"')
+            }
+            append(",\"duration\":5")
+            append('}')
+        }
+        return listOf(promptOnly, inputsOnly, richPrompt).distinct()
     }
 
     private fun buildInputJson(
@@ -204,8 +435,7 @@ class HuggingFaceApiService(
         }
     }
 
-    private fun executeGet(url: String, expectVideo: Boolean): ByteArray {
-        val http = if (expectVideo) videoClient else client
+    private fun executeGet(url: String, expectVideo: Boolean, http: OkHttpClient = if (expectVideo) videoClient else client): ByteArray {
         val request = Request.Builder()
             .url(url)
             .get()
@@ -221,9 +451,50 @@ class HuggingFaceApiService(
             }
             if (expectVideo && MediaPayload.looksLikeVideo(bytes)) return bytes
             if (!expectVideo && MediaPayload.looksLikeImage(bytes)) return bytes
+            val text = runCatching { bytes.decodeToString() }.getOrNull().orEmpty()
+            MediaPayload.decodeEmbeddedImage(text)?.let { decoded ->
+                if (expectVideo && MediaPayload.looksLikeVideo(decoded)) return decoded
+                if (!expectVideo && MediaPayload.looksLikeImage(decoded)) return decoded
+            }
             throw GenerationException(
                 if (expectVideo) GenerationError.VIDEO_UNAVAILABLE else GenerationError.EMPTY_RESPONSE
             )
         }
+    }
+
+    private fun isUsefulRewrite(original: String, rewritten: String): Boolean {
+        if (rewritten.length < 3) return false
+        val lower = rewritten.lowercase()
+        if (lower.startsWith("i'm sorry") || lower.startsWith("i cannot") || lower.startsWith("as an ai")) {
+            return false
+        }
+        if (rewritten.equals(original.trim(), ignoreCase = true)) return false
+        return LanguageScripts.nonLatinRatio(rewritten) < 0.25f
+    }
+
+    private fun nllbSource(text: String): String? {
+        text.forEach { c ->
+            when (c.code) {
+                in 0x0980..0x09FF -> return "ben_Beng"
+                in 0x0900..0x097F -> return "hin_Deva"
+                in 0x0A00..0x0A7F -> return "pan_Guru"
+                in 0x0A80..0x0AFF -> return "guj_Gujr"
+                in 0x0B00..0x0B7F -> return "ory_Orya"
+                in 0x0B80..0x0BFF -> return "tam_Taml"
+                in 0x0C00..0x0C7F -> return "tel_Telu"
+                in 0x0C80..0x0CFF -> return "kan_Knda"
+                in 0x0D00..0x0D7F -> return "mal_Mlym"
+                in 0x0600..0x06FF, in 0x0750..0x077F -> return "arb_Arab"
+                in 0x0400..0x04FF -> return "rus_Cyrl"
+                in 0x4E00..0x9FFF -> return "zho_Hans"
+                in 0x3040..0x30FF -> return "jpn_Jpan"
+                in 0xAC00..0xD7AF -> return "kor_Hang"
+                in 0x0E00..0x0E7F -> return "tha_Thai"
+                in 0x10A0..0x10FF -> return "kat_Geor"
+                in 0x0370..0x03FF -> return "ell_Grek"
+                in 0x0590..0x05FF -> return "heb_Hebr"
+            }
+        }
+        return null
     }
 }

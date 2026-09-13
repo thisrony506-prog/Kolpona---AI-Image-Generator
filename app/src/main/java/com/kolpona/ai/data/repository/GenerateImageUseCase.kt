@@ -91,6 +91,7 @@ class GenerateImageUseCase(
 
         history.insert(image)
         credits.deductForSuccessfulGeneration(generationId)
+        notifier.notifyCreationReady(image.isVideo)
         GenerationOutcome.Success(image)
     }
 }

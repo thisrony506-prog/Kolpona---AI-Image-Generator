@@ -10,7 +10,11 @@ import com.kolpona.ai.BuildConfig
 object CloudflareConfig {
     const val HOST = "api.cloudflare.com"
     const val MODEL = "@cf/black-forest-labs/flux-1-schnell"
-    const val USER_AGENT = "Kolpona/1.10.0 (Android)"
+    val CHAT_MODELS: List<String> = listOf(
+        "@cf/meta/llama-3.2-3b-instruct",
+        "@cf/meta/llama-3.1-8b-instruct"
+    )
+    const val USER_AGENT = "Kolpona/1.11.1 (Android)"
 
     val accountId: String
         get() = BuildConfig.CLOUDFLARE_ACCOUNT_ID.trim()
@@ -21,6 +25,6 @@ object CloudflareConfig {
     val isConfigured: Boolean
         get() = accountId.isNotBlank() && apiToken.isNotBlank()
 
-    fun runUrl(): String =
-        "https://$HOST/client/v4/accounts/$accountId/ai/run/$MODEL"
+    fun runUrl(model: String = MODEL): String =
+        "https://$HOST/client/v4/accounts/$accountId/ai/run/$model"
 }

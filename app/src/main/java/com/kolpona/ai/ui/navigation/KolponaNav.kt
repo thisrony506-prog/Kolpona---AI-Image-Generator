@@ -1,5 +1,7 @@
 package com.kolpona.ai.ui.navigation
 
+import android.app.Activity
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Chat
@@ -141,6 +143,14 @@ private fun MainTabs(
 ) {
     var tab by rememberSaveable { mutableStateOf(MainTab.Home) }
     val app = LocalContext.current.applicationContext as KolponaApp
+    val activity = LocalContext.current as? Activity
+
+    BackHandler {
+        when (tab) {
+            MainTab.Home -> activity?.moveTaskToBack(true)
+            else -> tab = MainTab.Home
+        }
+    }
 
     Scaffold(
         containerColor = MidnightDeep,

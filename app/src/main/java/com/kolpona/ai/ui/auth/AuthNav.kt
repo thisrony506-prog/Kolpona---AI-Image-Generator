@@ -1,5 +1,7 @@
 package com.kolpona.ai.ui.auth
 
+import android.app.Activity
+import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -36,6 +38,8 @@ fun AuthNav(
         modifier = modifier
     ) {
         composable(AuthRoutes.LOGIN) {
+            val activity = LocalContext.current as? Activity
+            BackHandler { activity?.moveTaskToBack(true) }
             LoginScreen(
                 viewModel = viewModel,
                 onCreateAccount = {

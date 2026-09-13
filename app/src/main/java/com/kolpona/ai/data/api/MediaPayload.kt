@@ -61,8 +61,81 @@ object MediaPayload {
                     lower.contains(".webm") ||
                     lower.contains("video") ||
                     lower.contains("huggingface") ||
+                    lower.contains("fal.media") ||
+                    lower.contains("replicate") ||
                     lower.contains("cloudflare")
             }
+    }
+
+    fun loadingWaitSeconds(text: String): Int? {
+        val json = runCatching { JSONObject(text.trim()) }.getOrNull() ?: return null
+        val error = json.optString("error").lowercase()
+        val estimated = json.optDouble("estimated_time", Double.NaN)
+        val loading = error.contains("load") ||
+            error.contains("warming") ||
+            error.contains("overloaded") ||
+            json.optBoolean("loading", false)
+        if (!loading && estimated.isNaN()) return null
+        val seconds = if (estimated.isNaN()) 12.0 else estimated
+        return seconds.coerceIn(4.0, 45.0).toInt()
+    }
+
+    fun queueStatusUrl(text: String): String? {
+        val json = runCatching { JSONObject(text.trim()) }.getOrNull() ?: return null
+        listOf("status_url", "statusUrl", "response_url", "responseUrl").forEach { key ->
+            json.optString(key).takeIf { it.startsWith("http") }?.let { return it }
+        }
+        json.optJSONObject("status")?.optString("url")
+            ?.takeIf { it.startsWith("http") }
+            ?.let { return it }
+        val status = json.optString("status").lowercase()
+        val requestId = json.optString("request_id").ifBlank { json.optString("requestId") }
+        if ((status.contains("queue") || status.contains("in_progress") || status == "pending") &&
+            requestId.isNotBlank()
+        ) {
+            json.optString("url").takeIf { it.startsWith("http") }?.let { return it }
+        }
+        return null
+    }
+
+    fun queueDone(text: String): Boolean {
+        val json = runCatching { JSONObject(text.trim()) }.getOrNull() ?: return false
+        val status = json.optString("status").lowercase()
+        return status == "completed" ||
+            status == "complete" ||
+            status == "succeeded" ||
+            status == "success" ||
+            extractHttpUrl(text) != null ||
+            decodeEmbeddedImage(text) != null
+    }
+
+    fun queueFailed(text: String): Boolean {
+        val json = runCatching { JSONObject(text.trim()) }.getOrNull() ?: return false
+        val status = json.optString("status").lowercase()
+        return status == "failed" || status == "error" || status == "cancelled"
+    }
+
+    fun chatText(text: String): String? {
+        val json = runCatching { JSONObject(text.trim()) }.getOrNull() ?: return text.trim().takeIf { it.isNotBlank() }
+        json.optJSONArray("choices")?.optJSONObject(0)?.let { choice ->
+            choice.optJSONObject("message")?.optString("content")
+                ?.trim()
+                ?.takeIf { it.isNotBlank() }
+                ?.let { return it }
+            choice.optString("text").trim().takeIf { it.isNotBlank() }?.let { return it }
+        }
+        json.optJSONObject("result")?.optString("response")
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?.let { return it }
+        json.optString("generated_text").trim().takeIf { it.isNotBlank() }?.let { return it }
+        json.optString("translation_text").trim().takeIf { it.isNotBlank() }?.let { return it }
+        json.optJSONArray("result")?.optJSONObject(0)?.optString("translation_text")
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?.let { return it }
+        json.optString("response").trim().takeIf { it.isNotBlank() }?.let { return it }
+        return null
     }
 
     private fun base64FromJson(json: JSONObject): ByteArray? {
@@ -73,6 +146,7 @@ object MediaPayload {
         }
         json.optJSONObject("result")?.let { child -> base64FromJson(child)?.let { return it } }
         json.optJSONObject("data")?.let { child -> base64FromJson(child)?.let { return it } }
+        json.optJSONObject("video")?.let { child -> base64FromJson(child)?.let { return it } }
         json.optJSONArray("data")?.let { array ->
             for (i in 0 until array.length()) {
                 val child = array.optJSONObject(i) ?: continue
@@ -95,13 +169,20 @@ object MediaPayload {
     }
 
     private fun urlFromJson(json: JSONObject): String? {
-        listOf("url", "video_url", "image_url", "output", "result", "file", "uri", "video", "image").forEach { key ->
+        listOf(
+            "url", "video_url", "image_url", "output", "result", "file", "uri",
+            "video", "image", "content", "download_url"
+        ).forEach { key ->
             json.optString(key).takeIf { it.startsWith("http") }?.let { return it }
         }
+        json.optJSONObject("video")?.let { child -> urlFromJson(child)?.let { return it } }
+        json.optJSONObject("image")?.let { child -> urlFromJson(child)?.let { return it } }
+        json.optJSONObject("output")?.let { child -> urlFromJson(child)?.let { return it } }
         json.optJSONObject("data")?.let { child -> urlFromJson(child)?.let { return it } }
         json.optJSONArray("data")?.let { array -> urlFromArray(array)?.let { return it } }
         json.optJSONArray("output")?.let { array -> urlFromArray(array)?.let { return it } }
         json.optJSONObject("result")?.let { child -> urlFromJson(child)?.let { return it } }
+        json.optJSONObject("response")?.let { child -> urlFromJson(child)?.let { return it } }
         return null
     }
 

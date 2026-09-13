@@ -13,6 +13,7 @@ import android.os.Build
 import android.speech.RecognizerIntent
 import android.widget.Toast
 import android.widget.VideoView
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -205,6 +206,13 @@ fun HomeScreen(
         } else {
             Toast.makeText(context, context.getString(R.string.voice_unavailable), Toast.LENGTH_LONG).show()
         }
+    }
+
+    BackHandler(enabled = showPlusMenu || studioSheet != StudioSheet.None || showChatsSheet || showCreditsSheet) {
+        showPlusMenu = false
+        studioSheet = StudioSheet.None
+        showChatsSheet = false
+        if (!state.watchingAd) showCreditsSheet = false
     }
 
     LaunchedEffect(Unit) {

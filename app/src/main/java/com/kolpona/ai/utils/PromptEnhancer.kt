@@ -78,7 +78,6 @@ class PromptEnhancer(
                 else -> {
                     val shortPrompt = prompt.split(Regex("\\s+")).size < 12
                     if (shortPrompt && !prompt.contains("light", ignoreCase = true)) add("natural lighting")
-                    if (shortPrompt && !prompt.contains("detail", ignoreCase = true)) add("highly detailed")
                 }
             }
             if (intent.culturalRegion) {

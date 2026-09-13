@@ -78,7 +78,7 @@ class GenerationRouter(
                 prompt = request.prompt,
                 width = request.width,
                 height = request.height,
-                negativePrompt = null,
+                negativePrompt = request.negativePrompt,
                 model = HuggingFaceConfig.IMAGE_MODEL_DEV
             )
         }
@@ -102,13 +102,20 @@ class GenerationRouter(
         var last: GenerationException? = null
         for (model in HuggingFaceConfig.VIDEO_MODELS) {
             try {
-                val bytes = huggingFace.generateVideo(request.prompt, model)
+                val bytes = huggingFace.generateVideo(
+                    prompt = request.prompt,
+                    model = model,
+                    width = request.width,
+                    height = request.height,
+                    negativePrompt = request.negativePrompt
+                )
                 if (qualityOk(bytes, MediaKind.VIDEO)) {
                     return MediaBytes(bytes, model)
                 }
                 last = GenerationException(GenerationError.VIDEO_UNAVAILABLE)
             } catch (e: GenerationException) {
                 last = e
+                if (e.error == GenerationError.API || e.error == GenerationError.RATE_LIMIT) break
             }
         }
         throw last ?: GenerationException(GenerationError.VIDEO_UNAVAILABLE)

@@ -35,12 +35,16 @@ data class SceneIntent(
                     !containsAny(text, "wearing", "girl", "woman", "man", "boy") -> SceneKind.PRODUCT
                 containsAny(text, "sari", "lungi", "panjabi", "fashion", "dress", "kameez", "clothing") &&
                     containsAny(text, "product", "studio catalog") -> SceneKind.FASHION
-                containsAny(text, "woman", "man", "girl", "boy", "person", "people", "face", "portrait", "মাইয়া", "ছেলে") ->
-                    SceneKind.PERSON
-                containsAny(text, "cat", "dog", "bird", "tiger", "horse", "animal", "kitten", "বিড়াল") ->
+                containsAny(
+                    text, "woman", "man", "girl", "boy", "person", "people", "face", "portrait",
+                    "মাইয়া", "মেয়ে", "মহিলা", "পুরুষ", "ছেলে", "পোলা", "ladki", "ladka", "mujer", "homme"
+                ) -> SceneKind.PERSON
+                containsAny(text, "cat", "dog", "bird", "tiger", "horse", "animal", "kitten", "বিড়াল", "কুকুর", "chat", "gato") ->
                     SceneKind.ANIMAL
-                containsAny(text, "waterfall", "mountain", "river", "village", "landscape", "forest", "cloud", "beach", "ঝর্ণা", "পাহাড়") ->
-                    SceneKind.LANDSCAPE
+                containsAny(
+                    text, "waterfall", "mountain", "river", "village", "landscape", "forest",
+                    "cloud", "beach", "ঝর্ণা", "পাহাড়", "নদী", "গ্রাম", "samudra", "laut"
+                ) -> SceneKind.LANDSCAPE
                 containsAny(text, "castle", "building", "architecture", "temple", "mosque") -> SceneKind.ARCHITECTURE
                 containsAny(text, "car", "bus", "train", "truck", "bike") -> SceneKind.VEHICLE
                 containsAny(text, "food", "meal", "rice", "curry") -> SceneKind.FOOD
@@ -58,11 +62,11 @@ data class SceneIntent(
             }
             return SceneIntent(
                 kind = kind,
-                sitting = containsAny(text, "sit", "seated", "বসে", "বইসা"),
-                standing = containsAny(text, "stand", "দাঁড়", "দাড়া"),
-                walking = containsAny(text, "walk", "হাঁট"),
-                running = containsAny(text, "run", "দৌড়"),
-                flying = containsAny(text, "fly", "flying", "উড়"),
+                sitting = containsAny(text, "sit", "seated", "বসে", "বইসা", "बैठा", "duduk"),
+                standing = containsAny(text, "stand", "দাঁড়", "দাড়া", "खड़ा"),
+                walking = containsAny(text, "walk", "হাঁট", "चल", "jalan"),
+                running = containsAny(text, "run", "দৌড়", "दौड़", "lari"),
+                flying = containsAny(text, "fly", "flying", "উড়", "उड़"),
                 flowingWater = containsAny(text, "waterfall", "flowing", "ঝর্ণা", "জলপ্রপাত"),
                 landscape = kind == SceneKind.LANDSCAPE,
                 raining = containsAny(text, "rain", "বৃষ্টি", "barish"),

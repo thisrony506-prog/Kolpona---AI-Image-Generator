@@ -49,7 +49,7 @@ class AppContainer(app: Application) {
 
     val huggingFaceApi: HuggingFaceApiService = HuggingFaceApiService(okHttpClient)
     val cloudflareApi: CloudflareApiService = CloudflareApiService(okHttpClient)
-    val textNormalize: TextNormalizeService = TextNormalizeService()
+    val textNormalize: TextNormalizeService = TextNormalizeService(huggingFaceApi, cloudflareApi)
     val generationRouter: GenerationRouter = GenerationRouter(huggingFaceApi, cloudflareApi)
 
     val generateImageUseCase: GenerateImageUseCase = GenerateImageUseCase(

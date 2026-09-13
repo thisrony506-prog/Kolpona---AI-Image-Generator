@@ -50,7 +50,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Kolpona"
         android:networkSecurityConfig="@xml/network_security_config"
-        android:enableOnBackInvokedCallback="true"
+        android:enableOnBackInvokedCallback="false"
         tools:replace="android:allowBackup,android:fullBackupContent,android:dataExtractionRules,android:networkSecurityConfig,android:theme"
         tools:targetApi="35">
 
@@ -58,6 +58,7 @@
             android:name=".MainActivity"
             android:exported="true"
             android:windowSoftInputMode="adjustResize"
+            android:launchMode="singleTop"
             android:theme="@style/Theme.Kolpona">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

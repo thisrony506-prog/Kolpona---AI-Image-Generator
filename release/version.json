@@ -1,8 +1,8 @@
 {
-  "versionCode": 20,
-  "versionName": "1.9.3",
+  "versionCode": 21,
+  "versionName": "1.10.0",
   "apkUrl": "https://github.com/thisrony506-prog/Kolpona---AI-Image-Generator/releases/download/kolpona-release-apk/app-release.apk",
-  "sha256": "c11232a9720ff9fed109c2998eb6863dc190b4a8d524de9473d32d959ed0d63b",
+  "sha256": "cce5db53429f801d0394d329090cccbb53c1d1e78ed1dbd15ec73522510fb2f3",
   "force": true,
-  "notes": "Kolpona 1.9.3"
+  "notes": "Kolpona 1.10.0"
 }

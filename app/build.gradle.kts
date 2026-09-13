@@ -71,8 +71,8 @@ android {
         }
         release {
             buildConfigField("boolean", "IS_AD_TEST_MODE", "false")
-            isMinifyEnabled = true
-            isShrinkResources = true
+            isMinifyEnabled = false
+            isShrinkResources = false
             isDebuggable = false
             signingConfig = if (signingConfigs.getByName("release").storeFile != null) {
                 signingConfigs.getByName("release")
@@ -143,6 +143,6 @@ dependencies {
 
     implementation("io.coil-kt:coil-compose:2.7.0")
 
-    // Start.io InApp SDK 5.x (user-requested 5.+ line; pinned for reproducible CI)
-    implementation("com.startapp:inapp-sdk:5.2.5")
+    // Start.io InApp SDK. 5.+ per Start.io docs; 4.10.8 is a known-good fallback if 5.x is unpublished.
+    implementation("com.startapp:inapp-sdk:4.10.8")
 }

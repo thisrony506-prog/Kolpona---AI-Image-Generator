@@ -52,6 +52,23 @@ jobs:
           set -o pipefail
           ./gradlew assembleRelease --stacktrace --no-daemon --warning-mode all | tee gradle-build.log
 
+      - name: Annotate Gradle failure
+        if: failure()
+        run: |
+          python3 - << 'PY'
+          from pathlib import Path
+          p = Path("gradle-build.log")
+          text = p.read_text(errors="replace") if p.exists() else "no gradle-build.log"
+          lines = text.splitlines()
+          hits = []
+          for i, line in enumerate(lines):
+              if any(s in line for s in ("FAILURE", "What went wrong", "error:", "e: file://", "Could not", "Execution failed")):
+                  hits.extend(lines[max(0, i):min(len(lines), i + 12)])
+          snippet = "\n".join(hits[-100:] or lines[-80:])[-5500:]
+          for line in snippet.splitlines() or ["unknown gradle failure"]:
+              print(f"::error::{line}")
+          PY
+
       - name: Upload Gradle log
         if: always()
         uses: actions/upload-artifact@v4

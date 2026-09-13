@@ -2,25 +2,21 @@ package com.kolpona.app.ads
 
 import android.app.Activity
 import android.app.Application
-import com.startapp.sdk.adsbase.Ad
-import com.startapp.sdk.adsbase.StartAppAd
-import com.startapp.sdk.adsbase.StartAppAd.AdMode
-import com.startapp.sdk.adsbase.StartAppSDK
-import com.startapp.sdk.adsbase.adlisteners.AdDisplayListener
-import com.startapp.sdk.adsbase.adlisteners.AdEventListener
+import java.lang.reflect.Proxy
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Isolated Start.io rewarded-video manager.
  *
- * Rewards are granted only from the SDK video-completed callback, and only once per shown ad.
+ * Uses reflection so the app compiles against Start.io 4.x and 5.x.
+ * Rewards are granted only from the SDK video-completed callback, once per shown ad.
  */
 class StartIoAdManager(
     private val app: Application
 ) {
     @Volatile
-    private var rewardedAd: StartAppAd? = null
+    private var rewardedAd: Any? = null
 
     @Volatile
     private var loaded: Boolean = false
@@ -31,14 +27,31 @@ class StartIoAdManager(
 
     fun initialize() {
         try {
-            StartAppSDK.initParams(app, AdsConfig.APP_ID)
-                .setReturnAdsEnabled(false)
-                .init()
-            runCatching { StartAppAd::class.java.getMethod("disableSplash").invoke(null) }
-            runCatching { StartAppAd::class.java.getMethod("disableAutoInterstitial").invoke(null) }
-            if (AdsConfig.isTestMode) {
-                StartAppSDK.setTestAdsEnabled(true)
+            val sdk = Class.forName("com.startapp.sdk.adsbase.StartAppSDK")
+            // 5.x: initParams(context, appId).setReturnAdsEnabled(false).init()
+            val initParams = sdk.methods.find { it.name == "initParams" && it.parameterCount == 2 }
+            if (initParams != null) {
+                val params = initParams.invoke(null, app, AdsConfig.APP_ID)
+                params?.javaClass?.methods
+                    ?.find { it.name == "setReturnAdsEnabled" }
+                    ?.invoke(params, false)
+                params?.javaClass?.methods
+                    ?.find { it.name == "init" && it.parameterCount == 0 }
+                    ?.invoke(params)
+            } else {
+                // 4.x: init(context, appId, returnAds)
+                sdk.methods.find { it.name == "init" && it.parameterCount == 3 }
+                    ?.invoke(null, app, AdsConfig.APP_ID, false)
             }
+            if (AdsConfig.isTestMode) {
+                sdk.methods.find { it.name == "setTestAdsEnabled" }
+                    ?.invoke(null, true)
+            }
+            val startAppAd = Class.forName("com.startapp.sdk.adsbase.StartAppAd")
+            startAppAd.methods.find { it.name == "disableSplash" && it.parameterCount == 0 }
+                ?.invoke(null)
+            startAppAd.methods.find { it.name == "disableAutoInterstitial" && it.parameterCount == 0 }
+                ?.invoke(null)
         } catch (_: Throwable) {
             // Ads must never crash the app.
         }
@@ -46,17 +59,33 @@ class StartIoAdManager(
 
     fun preload(activity: Activity) {
         try {
-            val ad = StartAppAd(activity)
+            val startAppAdClass = Class.forName("com.startapp.sdk.adsbase.StartAppAd")
+            val ad = startAppAdClass.getConstructor(android.content.Context::class.java).newInstance(activity)
             loaded = false
-            ad.loadAd(AdMode.REWARDED_VIDEO, object : AdEventListener {
-                override fun onReceiveAd(ad: Ad) {
-                    loaded = true
-                }
 
-                override fun onFailedToReceiveAd(ad: Ad?) {
-                    loaded = false
+            val listenerClass = Class.forName("com.startapp.sdk.adsbase.adlisteners.AdEventListener")
+            val listener = Proxy.newProxyInstance(
+                listenerClass.classLoader,
+                arrayOf(listenerClass)
+            ) { _, method, _ ->
+                when (method.name) {
+                    "onReceiveAd" -> loaded = true
+                    "onFailedToReceiveAd" -> loaded = false
                 }
-            })
+                null
+            }
+
+            val adMode = rewardedMode(startAppAdClass)
+            val loadWithMode = startAppAdClass.methods.find { method ->
+                method.name == "loadAd" && method.parameterCount == 2 &&
+                    method.parameterTypes[1].name.contains("AdEventListener")
+            }
+            if (adMode != null && loadWithMode != null) {
+                loadWithMode.invoke(ad, adMode, listener)
+            } else {
+                startAppAdClass.methods.find { it.name == "loadAd" && it.parameterCount == 1 }
+                    ?.invoke(ad, listener)
+            }
             rewardedAd = ad
         } catch (_: Throwable) {
             loaded = false
@@ -94,37 +123,55 @@ class StartIoAdManager(
         }
 
         try {
-            ad.setVideoListener {
-                val grant = synchronized(rewardLock) {
-                    if (currentShowToken == token && rewardConsumed.compareAndSet(false, true)) {
-                        token
-                    } else {
-                        null
+            val videoListenerClass = firstClass(
+                "com.startapp.sdk.adsbase.VideoListener",
+                "com.startapp.sdk.adsbase.adlisteners.VideoListener"
+            ) ?: return onUnavailable().also { preload(activity) }
+            val videoListener = Proxy.newProxyInstance(
+                videoListenerClass.classLoader,
+                arrayOf(videoListenerClass)
+            ) { _, method, _ ->
+                if (method.name == "onVideoCompleted" || method.name == "invoke") {
+                    val grant = synchronized(rewardLock) {
+                        if (currentShowToken == token && rewardConsumed.compareAndSet(false, true)) token else null
+                    }
+                    if (grant != null) onRewarded(grant)
+                }
+                null
+            }
+            ad.javaClass.methods.find { it.name == "setVideoListener" }
+                ?.invoke(ad, videoListener)
+
+            loaded = false
+
+            val displayListenerClass = Class.forName("com.startapp.sdk.adsbase.adlisteners.AdDisplayListener")
+            val displayListener = Proxy.newProxyInstance(
+                displayListenerClass.classLoader,
+                arrayOf(displayListenerClass)
+            ) { _, method, _ ->
+                when (method.name) {
+                    "adHidden", "adNotDisplayed" -> {
+                        onClosed()
+                        preload(activity)
                     }
                 }
-                if (grant != null) {
-                    onRewarded(grant)
-                }
+                null
             }
-            loaded = false
-            ad.showAd(object : AdDisplayListener {
-                override fun adHidden(ad: Ad) {
-                    onClosed()
-                    preload(activity)
-                }
-
-                override fun adDisplayed(ad: Ad) = Unit
-
-                override fun adClicked(ad: Ad) = Unit
-
-                override fun adNotDisplayed(ad: Ad) {
-                    onClosed()
-                    preload(activity)
-                }
-            })
+            ad.javaClass.methods.find { method ->
+                method.name == "showAd" && method.parameterCount == 1 &&
+                    method.parameterTypes[0].name.contains("AdDisplayListener")
+            }?.invoke(ad, displayListener)
+                ?: ad.javaClass.methods.find { it.name == "showAd" && it.parameterCount == 0 }?.invoke(ad)
         } catch (_: Throwable) {
             onUnavailable()
             preload(activity)
         }
+    }
+
+    private fun rewardedMode(startAppAdClass: Class<*>): Any? {
+        val modeClass = startAppAdClass.classes.find { it.simpleName == "AdMode" }
+            ?: runCatching { Class.forName("com.startapp.sdk.adsbase.StartAppAd\$AdMode") }.getOrNull()
+            ?: return null
+        return modeClass.enumConstants?.find { (it as Enum<*>).name.contains("REWARDED") }
     }
 }

@@ -18,32 +18,18 @@ object HuggingFaceConfig {
     const val VIDEO_MODEL = "Wan-AI/Wan2.2-TI2V-5B"
     const val IMAGE_STEPS = 50
     const val IMAGE_GUIDANCE = 8.5
-    const val VIDEO_STEPS = 40
-    const val VIDEO_FRAMES = 81
-    const val VIDEO_FPS = 16
-    const val VIDEO_GUIDANCE = 7.5
-    const val VIDEO_MOTION_BUCKET = 127
     val VIDEO_MODELS: List<String> = listOf(
         "Wan-AI/Wan2.2-TI2V-5B",
-        "Wan-AI/Wan2.1-T2V-1.3B",
-        "Lightricks/LTX-Video-0.9.8-13B-distilled",
-        "Lightricks/LTX-Video",
-        "THUDM/CogVideoX-5b"
+        "Wan-AI/Wan2.1-T2V-1.3B"
     )
-    val VIDEO_PROVIDERS: List<String> = listOf(
-        "fal-ai",
-        "replicate",
-        "together",
-        "novita",
-        "wavespeedai"
-    )
+    const val I2V_URL = "https://router.huggingface.co/fal-ai/fal-ai/ltxv-13b-098-distilled/image-to-video"
     val CHAT_MODELS: List<String> = listOf(
         "meta-llama/Llama-3.2-3B-Instruct",
         "HuggingFaceTB/SmolLM3-3B",
         "Qwen/Qwen2.5-3B-Instruct"
     )
     const val TRANSLATE_MODEL = "facebook/nllb-200-distilled-600M"
-    const val USER_AGENT = "Kolpona/1.12.0 (Android)"
+    const val USER_AGENT = "Kolpona/1.12.1 (Android)"
 
     val apiKey: String
         get() = BuildConfig.HUGGINGFACE_API_KEY

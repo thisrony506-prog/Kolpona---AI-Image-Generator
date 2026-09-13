@@ -1,5 +1,6 @@
 package com.kolpona.ai.data.api
 
+import android.util.Base64
 import com.kolpona.ai.domain.model.GenerationError
 import com.kolpona.ai.prompt.LanguageScripts
 import kotlinx.coroutines.Dispatchers
@@ -73,7 +74,38 @@ class HuggingFaceApiService(
                     return@withContext execute(url, body, media, expectVideo = true, allowRetry = true)
                 } catch (e: GenerationException) {
                     last = e
-                    if (e.error == GenerationError.API || e.error == GenerationError.RATE_LIMIT) throw e
+                    if (e.error == GenerationError.RATE_LIMIT) continue
+                }
+            }
+        }
+        throw last ?: GenerationException(GenerationError.VIDEO_UNAVAILABLE)
+    }
+
+    suspend fun generateVideoFromImage(
+        prompt: String,
+        jpeg: ByteArray
+    ): ByteArray = withContext(Dispatchers.IO) {
+        if (!isConfigured) throw GenerationException(GenerationError.VIDEO_UNAVAILABLE)
+        val quoted = jsonEscape(prompt.take(800))
+        val dataUri = "data:image/jpeg;base64," + Base64.encodeToString(jpeg, Base64.NO_WRAP)
+        val imageJson = jsonEscape(dataUri)
+        val media = "application/json; charset=utf-8".toMediaType()
+        val bodies = listOf(
+            """{"prompt":"$quoted","image_url":"$imageJson"}""",
+            """{"prompt":"$quoted","image":"$imageJson"}""",
+            """{"inputs":"$quoted","image":"$imageJson"}"""
+        )
+        val urls = listOf(
+            HuggingFaceConfig.I2V_URL,
+            "${HuggingFaceConfig.ROUTER_HOST}/fal-ai/fal-ai/wan/v2.2-5b/image-to-video"
+        )
+        var last: GenerationException? = null
+        for (url in urls) {
+            for (body in bodies) {
+                try {
+                    return@withContext execute(url, body, media, expectVideo = true, allowRetry = true)
+                } catch (e: GenerationException) {
+                    last = e
                 }
             }
         }
@@ -215,11 +247,15 @@ class HuggingFaceApiService(
                 val bytes = response.body?.bytes() ?: ByteArray(0)
                 when (response.code) {
                     in 200..299 -> {
+                        val location = response.header("Location")
                         val asText = runCatching { bytes.decodeToString() }.getOrNull().orEmpty()
                         val wait = MediaPayload.loadingWaitSeconds(asText)
                         if (wait != null && allowRetry) {
                             Thread.sleep(wait * 1000L)
                             return execute(url, bodyJson, media, expectVideo, allowRetry = false)
+                        }
+                        if (!location.isNullOrBlank() && (bytes.isEmpty() || response.code == 202)) {
+                            return pollUntilMedia(location, expectVideo, http)
                         }
                         return interpretSuccess(bytes, expectVideo, http)
                     }
@@ -320,8 +356,13 @@ class HuggingFaceApiService(
                     if (!expectVideo && MediaPayload.looksLikeImage(decoded)) return decoded
                 }
                 val nested = MediaPayload.extractHttpUrl(text)
-                if (!nested.isNullOrBlank() && nested != url && MediaPayload.queueDone(text)) {
-                    return executeGet(nested, expectVideo, http)
+                if (!nested.isNullOrBlank() && nested != url) {
+                    val ready = MediaPayload.queueDone(text) ||
+                        nested.contains(".mp4", ignoreCase = true) ||
+                        nested.contains("fal.media", ignoreCase = true) ||
+                        nested.contains("replicate", ignoreCase = true) ||
+                        nested.contains("wavespeed", ignoreCase = true)
+                    if (ready) return executeGet(nested, expectVideo, http)
                 }
             }
         }
@@ -331,28 +372,45 @@ class HuggingFaceApiService(
     }
 
     private fun videoUrls(model: String): List<String> {
-        val falAliases = when {
+        val fromHub = runCatching { fetchProviderUrls(model, "text-to-video") }.getOrNull().orEmpty()
+        val hardcoded = when {
             model.contains("Wan2.2", ignoreCase = true) -> listOf(
                 "${HuggingFaceConfig.ROUTER_HOST}/fal-ai/fal-ai/wan/v2.2-5b/text-to-video",
-                "${HuggingFaceConfig.ROUTER_HOST}/fal-ai/fal-ai/wan-t2v"
+                "${HuggingFaceConfig.ROUTER_HOST}/replicate/wan-video/wan-2.2-5b-fast",
+                "${HuggingFaceConfig.ROUTER_HOST}/wavespeed/wavespeed-ai/wan-2.2/t2v-5b-720p"
             )
             model.contains("Wan2.1", ignoreCase = true) -> listOf(
-                "${HuggingFaceConfig.ROUTER_HOST}/fal-ai/fal-ai/wan-t2v"
-            )
-            model.contains("LTX", ignoreCase = true) -> listOf(
-                "${HuggingFaceConfig.ROUTER_HOST}/fal-ai/fal-ai/ltx-video"
+                "${HuggingFaceConfig.ROUTER_HOST}/fal-ai/fal-ai/wan/v2.1/1.3b/text-to-video"
             )
             else -> emptyList()
         }
-        return (
-            falAliases +
-                listOf(
-                    "${HuggingFaceConfig.ROUTER_HOST}/fal-ai/$model",
-                    "${HuggingFaceConfig.ROUTER_HOST}/replicate/$model",
-                    "${HuggingFaceConfig.ROUTER_BASE}/$model",
-                    "${HuggingFaceConfig.INFERENCE_BASE}/$model"
-                )
-            ).distinct()
+        return (fromHub + hardcoded).distinct()
+    }
+
+    private fun fetchProviderUrls(model: String, task: String): List<String> {
+        val request = Request.Builder()
+            .url("https://huggingface.co/api/models/$model?expand[]=inferenceProviderMapping")
+            .get()
+            .header("User-Agent", HuggingFaceConfig.USER_AGENT)
+            .build()
+        val text = chatClient.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) return emptyList()
+            response.body?.string().orEmpty()
+        }
+        val mapping = runCatching { JSONObject(text).optJSONObject("inferenceProviderMapping") }
+            .getOrNull() ?: return emptyList()
+        val urls = mutableListOf<String>()
+        val keys = mapping.keys()
+        while (keys.hasNext()) {
+            val provider = keys.next()
+            val entry = mapping.optJSONObject(provider) ?: continue
+            if (entry.optString("status") != "live") continue
+            if (entry.optString("task") != task) continue
+            val providerId = entry.optString("providerId")
+            if (providerId.isBlank()) continue
+            urls += "${HuggingFaceConfig.ROUTER_HOST}/$provider/$providerId"
+        }
+        return urls
     }
 
     private fun videoBodies(
@@ -362,41 +420,11 @@ class HuggingFaceApiService(
         negativePrompt: String?
     ): List<String> {
         val quoted = jsonEscape(prompt.take(1400))
-        val negative = negativePrompt?.takeIf { it.isNotBlank() }?.let { jsonEscape(it.take(400)) }
         val promptOnly = """{"prompt":"$quoted"}"""
         val inputsOnly = """{"inputs":"$quoted"}"""
-        val params = buildList {
-            add("\"num_frames\":${HuggingFaceConfig.VIDEO_FRAMES}")
-            add("\"num_inference_steps\":${HuggingFaceConfig.VIDEO_STEPS}")
-            add("\"guidance_scale\":${HuggingFaceConfig.VIDEO_GUIDANCE}")
-            add("\"fps\":${HuggingFaceConfig.VIDEO_FPS}")
-            add("\"frames_per_second\":${HuggingFaceConfig.VIDEO_FPS}")
-            add("\"motion_bucket_id\":${HuggingFaceConfig.VIDEO_MOTION_BUCKET}")
-            if (width != null && height != null) {
-                add("\"width\":$width")
-                add("\"height\":$height")
-            }
-            if (negative != null) add("\"negative_prompt\":\"$negative\"")
-        }.joinToString(",")
-        val richInputs = """{"inputs":"$quoted","parameters":{$params}}"""
-        val richPrompt = buildString {
-            append("{\"prompt\":\"$quoted\"")
-            if (width != null && height != null) {
-                val landscape = width >= height
-                append(",\"aspect_ratio\":\"")
-                append(if (landscape) "16:9" else "9:16")
-                append('"')
-            }
-            append(",\"num_frames\":${HuggingFaceConfig.VIDEO_FRAMES}")
-            append(",\"frames_per_second\":${HuggingFaceConfig.VIDEO_FPS}")
-            append(",\"num_inference_steps\":${HuggingFaceConfig.VIDEO_STEPS}")
-            append(",\"guidance_scale\":${HuggingFaceConfig.VIDEO_GUIDANCE}")
-            append(",\"motion_bucket_id\":${HuggingFaceConfig.VIDEO_MOTION_BUCKET}")
-            append(",\"duration\":5")
-            if (negative != null) append(",\"negative_prompt\":\"$negative\"")
-            append('}')
-        }
-        return listOf(richPrompt, richInputs, promptOnly, inputsOnly).distinct()
+        val aspect = if (width != null && height != null && width >= height) "16:9" else "9:16"
+        val fal = """{"prompt":"$quoted","aspect_ratio":"$aspect"}"""
+        return listOf(promptOnly, inputsOnly, fal).distinct()
     }
 
     private fun buildInputJson(

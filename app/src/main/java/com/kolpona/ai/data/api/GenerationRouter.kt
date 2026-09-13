@@ -105,29 +105,39 @@ class GenerationRouter(
     }
 
     private suspend fun generateVideo(request: MediaRequest): MediaBytes {
-        if (!huggingFace.isConfigured) {
-            throw GenerationException(GenerationError.VIDEO_UNAVAILABLE)
-        }
         var last: GenerationException? = null
-        for (model in HuggingFaceConfig.VIDEO_MODELS) {
-            try {
-                val bytes = huggingFace.generateVideo(
-                    prompt = request.prompt,
-                    model = model,
-                    width = request.width,
-                    height = request.height,
-                    negativePrompt = request.negativePrompt
-                )
-                if (qualityOk(bytes, MediaKind.VIDEO)) {
-                    return MediaBytes(bytes, model)
+        if (huggingFace.isConfigured) {
+            for (model in HuggingFaceConfig.VIDEO_MODELS) {
+                try {
+                    val bytes = huggingFace.generateVideo(
+                        prompt = request.prompt,
+                        model = model,
+                        width = request.width,
+                        height = request.height,
+                        negativePrompt = request.negativePrompt
+                    )
+                    if (qualityOk(bytes, MediaKind.VIDEO)) {
+                        return MediaBytes(bytes, model)
+                    }
+                    last = GenerationException(GenerationError.VIDEO_UNAVAILABLE)
+                } catch (e: GenerationException) {
+                    last = e
                 }
-                last = GenerationException(GenerationError.VIDEO_UNAVAILABLE)
-            } catch (e: GenerationException) {
-                last = e
-                if (e.error == GenerationError.API || e.error == GenerationError.RATE_LIMIT) break
             }
         }
-        throw last ?: GenerationException(GenerationError.VIDEO_UNAVAILABLE)
+        val frame = try {
+            generateImage(request)
+        } catch (e: GenerationException) {
+            throw last ?: e
+        }
+        if (!huggingFace.isConfigured) {
+            throw last ?: GenerationException(GenerationError.VIDEO_UNAVAILABLE)
+        }
+        val animated = huggingFace.generateVideoFromImage(request.prompt, frame.bytes)
+        if (!qualityOk(animated, MediaKind.VIDEO)) {
+            throw last ?: GenerationException(GenerationError.VIDEO_UNAVAILABLE)
+        }
+        return MediaBytes(animated, "ltx-i2v")
     }
 
     private fun qualityOk(bytes: ByteArray, kind: MediaKind): Boolean =

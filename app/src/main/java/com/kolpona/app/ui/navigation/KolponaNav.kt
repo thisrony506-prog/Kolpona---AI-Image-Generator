@@ -2,8 +2,8 @@ package com.kolpona.app.ui.navigation
 
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material.icons.outlined.Menu
+import androidx.compose.material.icons.outlined.Chat
+import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -79,7 +79,6 @@ fun KolponaNav(
         }
         composable(Routes.MAIN) {
             MainTabs(
-                onOpenResult = { navController.navigate(Routes.result(it)) },
                 onOpenViewer = { navController.navigate(Routes.viewer(it)) },
                 onPrivacy = { navController.navigate(Routes.PRIVACY) },
                 onTerms = { navController.navigate(Routes.TERMS) },
@@ -133,7 +132,6 @@ fun KolponaNav(
 
 @Composable
 private fun MainTabs(
-    onOpenResult: (String) -> Unit,
     onOpenViewer: (String) -> Unit,
     onPrivacy: () -> Unit,
     onTerms: () -> Unit,
@@ -148,14 +146,14 @@ private fun MainTabs(
                 NavigationBarItem(
                     selected = tab == MainTab.Home,
                     onClick = { tab = MainTab.Home },
-                    icon = { Icon(Icons.Outlined.Home, contentDescription = stringResource(R.string.nav_home)) },
+                    icon = { Icon(Icons.Outlined.Chat, contentDescription = stringResource(R.string.nav_home)) },
                     label = { Text(stringResource(R.string.nav_home)) },
                     colors = NavigationBarItemDefaults.colors(indicatorColor = PinkAccent.copy(alpha = 0.18f))
                 )
                 NavigationBarItem(
                     selected = tab == MainTab.History,
                     onClick = { tab = MainTab.History },
-                    icon = { Icon(Icons.Outlined.Menu, contentDescription = stringResource(R.string.nav_history)) },
+                    icon = { Icon(Icons.Outlined.PhotoLibrary, contentDescription = stringResource(R.string.nav_history)) },
                     label = { Text(stringResource(R.string.nav_history)) },
                     colors = NavigationBarItemDefaults.colors(indicatorColor = PinkAccent.copy(alpha = 0.18f))
                 )
@@ -177,7 +175,7 @@ private fun MainTabs(
                 HomeScreen(
                     viewModel = vm,
                     onOpenSettings = { tab = MainTab.Settings },
-                    onGenerated = onOpenResult,
+                    onOpenImage = onOpenViewer,
                     modifier = Modifier.padding(padding)
                 )
             }

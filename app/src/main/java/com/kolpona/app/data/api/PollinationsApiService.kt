@@ -16,7 +16,7 @@ class GenerationException(val error: GenerationError) : Exception()
 
 /**
  * Centralized Pollinations image client.
- * UI layers must never call the network directly.
+ * Tries the authenticated gen.host first, then the public image host.
  */
 class PollinationsApiService(
     private val client: OkHttpClient
@@ -28,9 +28,53 @@ class PollinationsApiService(
         height: Int,
         seed: Int? = null
     ): ByteArray = withContext(Dispatchers.IO) {
-        val encodedPrompt = URLEncoder.encode(prompt, StandardCharsets.UTF_8.name())
+        val encodedPrompt = URLEncoder.encode(prompt.take(1500), StandardCharsets.UTF_8.name())
             .replace("+", "%20")
-        val urlBuilder = "${PollinationsConfig.API_BASE_URL}/${PollinationsConfig.IMAGE_PATH}/$encodedPrompt"
+        val primary = buildUrl(
+            PollinationsConfig.API_BASE_URL,
+            PollinationsConfig.IMAGE_PATH,
+            encodedPrompt,
+            model,
+            width,
+            height,
+            seed
+        )
+        val fallback = buildUrl(
+            PollinationsConfig.FALLBACK_BASE_URL,
+            PollinationsConfig.FALLBACK_PATH,
+            encodedPrompt,
+            model,
+            width,
+            height,
+            seed
+        )
+        try {
+            execute(primary)
+        } catch (first: GenerationException) {
+            if (first.error == GenerationError.NETWORK ||
+                first.error == GenerationError.TIMEOUT ||
+                first.error == GenerationError.RATE_LIMIT
+            ) {
+                throw first
+            }
+            try {
+                execute(fallback)
+            } catch (second: GenerationException) {
+                throw first
+            }
+        }
+    }
+
+    private fun buildUrl(
+        base: String,
+        path: String,
+        encodedPrompt: String,
+        model: String,
+        width: Int,
+        height: Int,
+        seed: Int?
+    ): String {
+        val builder = "$base/$path/$encodedPrompt"
             .toHttpUrl()
             .newBuilder()
             .addQueryParameter("model", model)
@@ -38,30 +82,32 @@ class PollinationsApiService(
             .addQueryParameter("height", height.toString())
             .addQueryParameter("nologo", "true")
             .addQueryParameter("private", "true")
-        if (seed != null) {
-            urlBuilder.addQueryParameter("seed", seed.toString())
-        }
+            .addQueryParameter("referrer", "kolpona")
+        if (seed != null) builder.addQueryParameter("seed", seed.toString())
+        return builder.build().toString()
+    }
 
+    private fun execute(url: String): ByteArray {
         val request = Request.Builder()
-            .url(urlBuilder.build())
+            .url(url)
             .get()
-            .header("Accept", "image/*")
+            .header("Accept", "image/*,*/*")
+            .header("User-Agent", "Kolpona/1.1.0 (Android)")
             .build()
-
         try {
             client.newCall(request).execute().use { response ->
                 when (response.code) {
                     in 200..299 -> {
                         val body = response.body ?: throw GenerationException(GenerationError.EMPTY_RESPONSE)
                         val bytes = body.bytes()
-                        if (bytes.size < 128) {
+                        if (!looksLikeImage(bytes)) {
                             throw GenerationException(GenerationError.EMPTY_RESPONSE)
                         }
                         val contentType = response.header("Content-Type").orEmpty().lowercase()
-                        if (contentType.contains("json") || contentType.contains("text/plain")) {
+                        if (contentType.contains("json") || contentType.contains("text/html")) {
                             throw GenerationException(GenerationError.API)
                         }
-                        bytes
+                        return bytes
                     }
                     400, 422 -> throw GenerationException(GenerationError.INVALID_PROMPT)
                     401, 403 -> throw GenerationException(GenerationError.API)
@@ -72,14 +118,26 @@ class PollinationsApiService(
             }
         } catch (e: GenerationException) {
             throw e
-        } catch (e: SocketTimeoutException) {
+        } catch (_: SocketTimeoutException) {
             throw GenerationException(GenerationError.TIMEOUT)
-        } catch (e: UnknownHostException) {
+        } catch (_: UnknownHostException) {
             throw GenerationException(GenerationError.NETWORK)
-        } catch (e: IOException) {
+        } catch (_: IOException) {
             throw GenerationException(GenerationError.NETWORK)
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             throw GenerationException(GenerationError.UNKNOWN)
         }
+    }
+
+    private fun looksLikeImage(bytes: ByteArray): Boolean {
+        if (bytes.size < 24) return false
+        val png = bytes[0] == 0x89.toByte() && bytes[1] == 0x50.toByte() && bytes[2] == 0x4E.toByte()
+        val jpg = bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte()
+        val gif = bytes[0] == 0x47.toByte() && bytes[1] == 0x49.toByte() && bytes[2] == 0x46.toByte()
+        val webp = bytes.size > 12 &&
+            bytes[0] == 'R'.code.toByte() &&
+            bytes[1] == 'I'.code.toByte() &&
+            bytes[8] == 'W'.code.toByte()
+        return png || jpg || gif || webp
     }
 }

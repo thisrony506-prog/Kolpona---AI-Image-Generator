@@ -4,7 +4,7 @@
     <string name="app_full_name">Kolpona – AI Image Generator</string>
     <string name="app_tagline">Turn Your Imagination Into Images.</string>
 
-    <string name="nav_home">Home</string>
+    <string name="nav_home">Chat</string>
     <string name="nav_history">History</string>
     <string name="nav_settings">Settings</string>
 
@@ -18,7 +18,16 @@
 
     <string name="hero_title">Create Something Amazing</string>
     <string name="hero_subtitle">Turn your imagination into beautiful AI-generated images.</string>
-    <string name="prompt_hint">Describe the image you want...</string>
+    <string name="chat_subtitle">AI image chat</string>
+    <string name="chat_greeting">What do you want to create?</string>
+    <string name="chat_greeting_body">Describe an image in a message, like ChatGPT. Kolpona will generate it.</string>
+    <string name="chat_image_ready">Here is your image.</string>
+    <string name="chat_suggest_1">A majestic tiger in a misty bamboo forest</string>
+    <string name="chat_suggest_2">Cyberpunk street at night, neon rain</string>
+    <string name="chat_suggest_3">Cute anime girl in a sunflower field</string>
+    <string name="chat_suggest_4">Cozy cabin in snowy mountains, warm light</string>
+    <string name="send">Send</string>
+    <string name="prompt_hint">Describe the image you want…</string>
     <string name="prompt_label">Prompt</string>
     <string name="style_label">Style</string>
     <string name="aspect_ratio_label">Aspect Ratio</string>
@@ -74,12 +83,12 @@
     <string name="error_save">Couldn\'t save the image. Please try again.</string>
     <string name="error_generic">Something went wrong. Please try again.</string>
 
-    <string name="onboarding_1_title">Imagine</string>
-    <string name="onboarding_1_body">Describe anything you can imagine.</string>
+    <string name="onboarding_1_title">Chat</string>
+    <string name="onboarding_1_body">Talk to Kolpona like ChatGPT or Gemini. Type what you imagine.</string>
     <string name="onboarding_2_title">Create</string>
-    <string name="onboarding_2_body">Kolpona turns your words into AI-generated artwork.</string>
+    <string name="onboarding_2_body">Every message becomes an AI-generated image in the conversation.</string>
     <string name="onboarding_3_title">Explore</string>
-    <string name="onboarding_3_body">Generate, save and share your creations.</string>
+    <string name="onboarding_3_body">Save, share, and earn extra credits by watching a short video.</string>
     <string name="start_creating">Start Creating</string>
     <string name="next">Next</string>
     <string name="skip">Skip</string>

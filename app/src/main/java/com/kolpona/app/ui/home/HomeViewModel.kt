@@ -5,10 +5,12 @@ import androidx.lifecycle.viewModelScope
 import com.kolpona.app.ads.StartIoAdManager
 import com.kolpona.app.data.prefs.AppPreferences
 import com.kolpona.app.data.repository.GenerateImageUseCase
+import com.kolpona.app.data.repository.HistoryRepository
 import com.kolpona.app.di.AppContainer
 import com.kolpona.app.domain.manager.CreditConfig
 import com.kolpona.app.domain.manager.CreditManager
 import com.kolpona.app.domain.model.AspectRatio
+import com.kolpona.app.domain.model.GeneratedImage
 import com.kolpona.app.domain.model.GenerationError
 import com.kolpona.app.domain.model.GenerationInput
 import com.kolpona.app.domain.model.GenerationOutcome
@@ -28,27 +30,55 @@ import kotlinx.coroutines.launch
 
 data class HomeUiState(
     val prompt: String = "",
+    val pendingPrompt: String = "",
     val style: ImageStyle = ImageStyle.REALISTIC,
     val aspectRatio: AspectRatio = AspectRatio.SQUARE,
     val quality: ImageQuality = ImageQuality.HIGH,
     val modelId: String = ImageModels.default().id,
     val enhance: Boolean = true,
     val credits: Int = CreditConfig.DAILY_INITIAL_CREDITS,
+    val images: List<GeneratedImage> = emptyList(),
     val isGenerating: Boolean = false,
     val error: GenerationError? = null,
-    val watchingAd: Boolean = false
+    val watchingAd: Boolean = false,
+    val successfulGenerations: Int = 0
 )
 
+sealed class ChatItem {
+    abstract val key: String
+
+    data class User(val text: String, override val key: String) : ChatItem()
+    data class Image(val image: GeneratedImage, override val key: String) : ChatItem()
+    data class Pending(val text: String, override val key: String = "pending") : ChatItem()
+    data class Error(val error: GenerationError, override val key: String = "error") : ChatItem()
+}
+
+fun HomeUiState.chatItems(): List<ChatItem> = buildList {
+    images.asReversed().forEach { image ->
+        add(ChatItem.User(image.prompt, "${image.id}-user"))
+        add(ChatItem.Image(image, "${image.id}-image"))
+    }
+    if (isGenerating && pendingPrompt.isNotBlank()) {
+        add(ChatItem.User(pendingPrompt, "pending-user"))
+        add(ChatItem.Pending(pendingPrompt))
+    } else if (error != null && pendingPrompt.isNotBlank()) {
+        add(ChatItem.User(pendingPrompt, "error-user"))
+        add(ChatItem.Error(error))
+    }
+}
+
 sealed class HomeEvent {
-    data class NavigateToResult(val imageId: String) : HomeEvent()
     data object CreditsAdded : HomeEvent()
     data object AdUnavailable : HomeEvent()
+    data object NeedCredits : HomeEvent()
+    data object ShowInterstitial : HomeEvent()
 }
 
 class HomeViewModel(
     private val generateImage: GenerateImageUseCase,
     private val creditManager: CreditManager,
     private val preferences: AppPreferences,
+    private val history: HistoryRepository,
     val adManager: StartIoAdManager
 ) : ViewModel() {
 
@@ -73,40 +103,67 @@ class HomeViewModel(
             combine(
                 creditManager.currentCredits,
                 preferences.imageQuality,
-                preferences.enhancePrompts
-            ) { credits, quality, enhance ->
-                Triple(credits, quality, enhance)
-            }.collect { (credits, quality, enhance) ->
-                _state.update { it.copy(credits = credits, quality = quality, enhance = enhance) }
+                preferences.enhancePrompts,
+                history.observeAll()
+            ) { credits, quality, enhance, images ->
+                HomeExtras(credits, quality, enhance, images)
+            }.collect { extras ->
+                _state.update {
+                    it.copy(
+                        credits = extras.credits,
+                        quality = extras.quality,
+                        enhance = extras.enhance,
+                        images = extras.images
+                    )
+                }
             }
         }
     }
 
     fun onPromptChange(value: String) {
-        _state.update { it.copy(prompt = value, error = null) }
+        _state.update { it.copy(prompt = value, error = if (it.isGenerating) it.error else null) }
     }
 
     fun onStyleSelected(style: ImageStyle) {
         _state.update { it.copy(style = style) }
+        viewModelScope.launch { preferences.setDefaultStyle(style) }
     }
 
     fun onAspectSelected(ratio: AspectRatio) {
         _state.update { it.copy(aspectRatio = ratio) }
+        viewModelScope.launch { preferences.setDefaultAspectRatio(ratio) }
     }
 
-    fun onQualitySelected(quality: ImageQuality) {
-        _state.update { it.copy(quality = quality) }
-        viewModelScope.launch { preferences.setImageQuality(quality) }
+    fun sendSuggestion(text: String) {
+        _state.update { it.copy(prompt = text) }
+        send()
     }
 
-    fun generate() {
+    fun send() {
         val snapshot = _state.value
-        if (snapshot.isGenerating) return
+        val text = snapshot.prompt.trim()
+        if (text.isEmpty() || snapshot.isGenerating) return
+        if (snapshot.credits < CreditConfig.GENERATION_COST) {
+            _events.tryEmit(HomeEvent.NeedCredits)
+            return
+        }
+        _state.update { it.copy(prompt = "", pendingPrompt = text, error = null) }
+        generateInternal(text)
+    }
+
+    fun retry() {
+        val text = _state.value.pendingPrompt.ifBlank { _state.value.prompt }.trim()
+        if (text.isEmpty() || _state.value.isGenerating) return
+        generateInternal(text)
+    }
+
+    private fun generateInternal(prompt: String) {
+        val snapshot = _state.value
         viewModelScope.launch {
-            _state.update { it.copy(isGenerating = true, error = null) }
+            _state.update { it.copy(isGenerating = true, error = null, pendingPrompt = prompt) }
             val outcome = generateImage(
                 GenerationInput(
-                    prompt = snapshot.prompt,
+                    prompt = prompt,
                     style = snapshot.style,
                     aspectRatio = snapshot.aspectRatio,
                     quality = snapshot.quality,
@@ -116,17 +173,28 @@ class HomeViewModel(
             )
             when (outcome) {
                 is GenerationOutcome.Success -> {
-                    _state.update { it.copy(isGenerating = false, error = null) }
-                    _events.emit(HomeEvent.NavigateToResult(outcome.image.id))
+                    val count = snapshot.successfulGenerations + 1
+                    _state.update {
+                        it.copy(
+                            isGenerating = false,
+                            error = null,
+                            pendingPrompt = "",
+                            successfulGenerations = count
+                        )
+                    }
+                    if (count % 2 == 0) {
+                        _events.emit(HomeEvent.ShowInterstitial)
+                    }
                 }
                 is GenerationOutcome.Failure -> {
                     _state.update { it.copy(isGenerating = false, error = outcome.error) }
+                    if (outcome.error == GenerationError.INSUFFICIENT_CREDITS) {
+                        _events.emit(HomeEvent.NeedCredits)
+                    }
                 }
             }
         }
     }
-
-    fun retry() = generate()
 
     fun onAdRewarded(token: String) {
         viewModelScope.launch {
@@ -156,7 +224,15 @@ class HomeViewModel(
             generateImage = container.generateImageUseCase,
             creditManager = container.creditManager,
             preferences = container.preferences,
+            history = container.historyRepository,
             adManager = container.adManager
         )
     }
+
+    private data class HomeExtras(
+        val credits: Int,
+        val quality: ImageQuality,
+        val enhance: Boolean,
+        val images: List<GeneratedImage>
+    )
 }

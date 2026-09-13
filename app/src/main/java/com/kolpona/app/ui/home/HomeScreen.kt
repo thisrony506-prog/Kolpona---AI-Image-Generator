@@ -2,81 +2,110 @@ package com.kolpona.app.ui.home
 
 import android.app.Activity
 import android.widget.Toast
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.SuggestionChip
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.kolpona.app.R
+import com.kolpona.app.ads.StartIoBanner
 import com.kolpona.app.domain.manager.CreditConfig
 import com.kolpona.app.domain.model.AspectRatio
+import com.kolpona.app.domain.model.GeneratedImage
 import com.kolpona.app.domain.model.GenerationError
-import com.kolpona.app.domain.model.ImageQuality
 import com.kolpona.app.domain.model.ImageStyle
-import com.kolpona.app.ui.components.GeneratingDialog
 import com.kolpona.app.ui.components.KolponaMark
-import com.kolpona.app.ui.components.SectionLabel
 import com.kolpona.app.ui.theme.PinkAccent
 import com.kolpona.app.utils.formatArgs
 import com.kolpona.app.utils.messageRes
+import java.io.File
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     viewModel: HomeViewModel,
     onOpenSettings: () -> Unit,
-    onGenerated: (String) -> Unit,
+    onOpenImage: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val activity = context as? Activity
+    val keyboard = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
+    val chatItems = state.chatItems()
+    val listState = rememberLazyListState()
+    var showCreditsSheet by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         activity?.let { viewModel.adManager.preload(it) }
         viewModel.events.collect { event ->
             when (event) {
-                is HomeEvent.NavigateToResult -> onGenerated(event.imageId)
                 HomeEvent.CreditsAdded -> {
+                    showCreditsSheet = false
                     Toast.makeText(
                         context,
                         context.getString(R.string.credits_added, CreditConfig.REWARDED_VIDEO_REWARD),
@@ -90,130 +119,122 @@ fun HomeScreen(
                         Toast.LENGTH_LONG
                     ).show()
                 }
+                HomeEvent.NeedCredits -> showCreditsSheet = true
+                HomeEvent.ShowInterstitial -> activity?.let { viewModel.adManager.showInterstitial(it) }
             }
         }
     }
 
-    if (state.isGenerating) {
-        GeneratingDialog()
+    LaunchedEffect(chatItems.size, state.isGenerating) {
+        if (chatItems.isNotEmpty()) {
+            listState.animateScrollToItem(chatItems.lastIndex)
+        }
+    }
+
+    fun send() {
+        keyboard?.hide()
+        focusManager.clearFocus()
+        viewModel.send()
     }
 
     Column(
         modifier = modifier
             .fillMaxSize()
             .imePadding()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 12.dp)
     ) {
-        HomeHeader(
+        ChatHeader(
             credits = state.credits,
+            onCredits = { showCreditsSheet = true },
             onSettings = onOpenSettings
         )
-        Spacer(Modifier.height(28.dp))
-        Text(
-            text = stringResource(R.string.hero_title),
-            style = MaterialTheme.typography.displaySmall
-        )
-        Spacer(Modifier.height(8.dp))
-        Text(
-            text = stringResource(R.string.hero_subtitle),
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Spacer(Modifier.height(24.dp))
-        OutlinedTextField(
-            value = state.prompt,
-            onValueChange = viewModel::onPromptChange,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(140.dp),
-            placeholder = { Text(stringResource(R.string.prompt_hint)) },
-            shape = RoundedCornerShape(20.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = PinkAccent,
-                cursorColor = PinkAccent
-            )
-        )
-        Spacer(Modifier.height(20.dp))
-        SectionLabel(stringResource(R.string.style_label))
-        StyleChipRow(selected = state.style, onSelect = viewModel::onStyleSelected)
-        Spacer(Modifier.height(20.dp))
-        SectionLabel(stringResource(R.string.aspect_ratio_label))
-        AspectRow(selected = state.aspectRatio, onSelect = viewModel::onAspectSelected)
-        Spacer(Modifier.height(16.dp))
-        SectionLabel(stringResource(R.string.quality_label))
-        QualityRow(selected = state.quality, onSelect = viewModel::onQualitySelected)
-        Spacer(Modifier.height(24.dp))
 
-        val canAfford = state.credits >= CreditConfig.GENERATION_COST
-        Button(
-            onClick = viewModel::generate,
-            enabled = !state.isGenerating && canAfford,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp),
-            shape = RoundedCornerShape(16.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = PinkAccent,
-                disabledContainerColor = PinkAccent.copy(alpha = 0.4f),
-                contentColor = MaterialTheme.colorScheme.onPrimary
+        if (chatItems.isEmpty()) {
+            EmptyChat(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                onSuggestion = { viewModel.sendSuggestion(it) }
             )
-        ) {
-            Text(
-                text = if (canAfford) {
-                    stringResource(R.string.generate_image, CreditConfig.GENERATION_COST)
-                } else {
-                    stringResource(R.string.not_enough_credits)
-                },
-                style = MaterialTheme.typography.titleMedium
-            )
-        }
-        Spacer(Modifier.height(8.dp))
-        Text(
-            text = stringResource(R.string.credits_remaining, state.credits),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.align(Alignment.CenterHorizontally)
-        )
-
-        state.error?.let { generationError ->
-            Spacer(Modifier.height(12.dp))
-            ErrorCard(error = generationError, onRetry = viewModel::retry)
-        }
-
-        Spacer(Modifier.height(20.dp))
-        CreditCard(credits = state.credits)
-        Spacer(Modifier.height(16.dp))
-        RewardCard(
-            enabled = !state.isGenerating && !state.watchingAd,
-            onWatch = {
-                val host = activity
-                if (host == null) {
-                    viewModel.onAdUnavailable()
-                    return@RewardCard
+        } else {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(chatItems, key = { it.key }) { item ->
+                    when (item) {
+                        is ChatItem.User -> UserBubble(item.text)
+                        is ChatItem.Image -> AssistantImageBubble(
+                            image = item.image,
+                            onOpen = { onOpenImage(item.image.id) }
+                        )
+                        is ChatItem.Pending -> PendingBubble()
+                        is ChatItem.Error -> ErrorBubble(
+                            error = item.error,
+                            onRetry = viewModel::retry
+                        )
+                    }
                 }
-                viewModel.setWatchingAd(true)
-                viewModel.adManager.showRewarded(
-                    activity = host,
-                    onRewarded = viewModel::onAdRewarded,
-                    onUnavailable = viewModel::onAdUnavailable,
-                    onClosed = viewModel::onAdClosed
-                )
             }
+        }
+
+        StartIoBanner(adManager = viewModel.adManager)
+
+        ChatComposer(
+            prompt = state.prompt,
+            onPromptChange = viewModel::onPromptChange,
+            style = state.style,
+            onStyle = viewModel::onStyleSelected,
+            aspectRatio = state.aspectRatio,
+            onAspect = viewModel::onAspectSelected,
+            enabled = !state.isGenerating,
+            canSend = state.prompt.isNotBlank() && !state.isGenerating,
+            onSend = { send() }
         )
-        Spacer(Modifier.height(24.dp))
+    }
+
+    if (showCreditsSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showCreditsSheet = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = MaterialTheme.colorScheme.surface
+        ) {
+            CreditsSheet(
+                credits = state.credits,
+                enabled = !state.isGenerating && !state.watchingAd,
+                onWatch = {
+                    val host = activity
+                    if (host == null) {
+                        viewModel.onAdUnavailable()
+                        return@CreditsSheet
+                    }
+                    viewModel.setWatchingAd(true)
+                    viewModel.adManager.showRewarded(
+                        activity = host,
+                        onRewarded = viewModel::onAdRewarded,
+                        onUnavailable = viewModel::onAdUnavailable,
+                        onClosed = viewModel::onAdClosed
+                    )
+                }
+            )
+        }
     }
 }
 
 @Composable
-private fun HomeHeader(credits: Int, onSettings: () -> Unit) {
+private fun ChatHeader(credits: Int, onCredits: () -> Unit, onSettings: () -> Unit) {
     val creditsDesc = stringResource(R.string.cd_credits)
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        KolponaMark(size = 40.dp)
-        Spacer(Modifier.size(12.dp))
+        KolponaMark(size = 36.dp)
+        Spacer(Modifier.size(10.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = stringResource(R.string.app_name),
@@ -221,12 +242,30 @@ private fun HomeHeader(credits: Int, onSettings: () -> Unit) {
                 fontWeight = FontWeight.Bold
             )
             Text(
-                text = stringResource(R.string.credits_count, credits),
+                text = stringResource(R.string.chat_subtitle),
                 style = MaterialTheme.typography.bodyMedium,
-                color = PinkAccent,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.semantics { contentDescription = creditsDesc }
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+        }
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = PinkAccent.copy(alpha = 0.14f),
+            modifier = Modifier
+                .height(40.dp)
+                .clickable(onClick = onCredits)
+                .semantics { contentDescription = creditsDesc }
+        ) {
+            Box(
+                modifier = Modifier.padding(horizontal = 12.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = stringResource(R.string.credits_count, credits),
+                    color = PinkAccent,
+                    fontWeight = FontWeight.SemiBold,
+                    style = MaterialTheme.typography.labelLarge
+                )
+            }
         }
         IconButton(onClick = onSettings, modifier = Modifier.size(48.dp)) {
             Icon(
@@ -237,83 +276,52 @@ private fun HomeHeader(credits: Int, onSettings: () -> Unit) {
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun StyleChipRow(selected: ImageStyle, onSelect: (ImageStyle) -> Unit) {
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+private fun EmptyChat(onSuggestion: (String) -> Unit, modifier: Modifier = Modifier) {
+    val suggestions = listOf(
+        stringResource(R.string.chat_suggest_1),
+        stringResource(R.string.chat_suggest_2),
+        stringResource(R.string.chat_suggest_3),
+        stringResource(R.string.chat_suggest_4)
+    )
+    Column(
+        modifier = modifier.padding(horizontal = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
     ) {
-        ImageStyle.entries.forEach { style ->
-            val isSelected = style == selected
-            FilterChip(
-                selected = isSelected,
-                onClick = { onSelect(style) },
-                label = { Text(stringResource(style.labelRes)) },
-                colors = FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = PinkAccent,
-                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary
-                ),
-                shape = RoundedCornerShape(20.dp)
-            )
-        }
-    }
-}
-
-@Composable
-private fun AspectRow(selected: AspectRatio, onSelect: (AspectRatio) -> Unit) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-        AspectRatio.entries.forEach { ratio ->
-            val isSelected = ratio == selected
-            FilterChip(
-                selected = isSelected,
-                onClick = { onSelect(ratio) },
-                modifier = Modifier.weight(1f),
-                label = { Text(ratio.shortLabel) },
-                colors = FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = PinkAccent,
-                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary
-                )
-            )
-        }
-    }
-}
-
-@Composable
-private fun QualityRow(selected: ImageQuality, onSelect: (ImageQuality) -> Unit) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        ImageQuality.entries.forEach { quality ->
-            FilterChip(
-                selected = quality == selected,
-                onClick = { onSelect(quality) },
-                label = { Text(stringResource(quality.labelRes)) },
-                colors = FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = PinkAccent,
-                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary
-                )
-            )
-        }
-    }
-}
-
-@Composable
-private fun ErrorCard(error: GenerationError, onRetry: () -> Unit) {
-    val args = error.formatArgs()
-    val message = if (args != null) {
-        stringResource(error.messageRes(), *args)
-    } else {
-        stringResource(error.messageRes())
-    }
-    Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
-        shape = RoundedCornerShape(20.dp),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(Modifier.padding(16.dp)) {
-            Text(text = message, color = MaterialTheme.colorScheme.onErrorContainer)
-            if (error != GenerationError.EMPTY_PROMPT && error != GenerationError.INSUFFICIENT_CREDITS) {
-                TextButton(onClick = onRetry) {
-                    Text(stringResource(R.string.try_again), color = PinkAccent)
+        KolponaMark(size = 72.dp)
+        Spacer(Modifier.height(20.dp))
+        Text(
+            text = stringResource(R.string.chat_greeting),
+            style = MaterialTheme.typography.headlineMedium
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = stringResource(R.string.chat_greeting_body),
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(24.dp))
+        suggestions.chunked(2).forEach { row ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                row.forEach { text ->
+                    SuggestionChip(
+                        onClick = { onSuggestion(text) },
+                        label = {
+                            Text(
+                                text = text,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        },
+                        modifier = Modifier.weight(1f)
+                    )
                 }
             }
         }
@@ -321,82 +329,256 @@ private fun ErrorCard(error: GenerationError, onRetry: () -> Unit) {
 }
 
 @Composable
-private fun CreditCard(credits: Int) {
-    val max = CreditConfig.DAILY_INITIAL_CREDITS
-    val progress = (credits.toFloat() / max.toFloat()).coerceIn(0f, 1f)
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-    ) {
-        Column(Modifier.padding(20.dp)) {
-            Text(stringResource(R.string.daily_credits), style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(6.dp))
-            if (credits <= 0) {
-                Text(
-                    text = stringResource(R.string.daily_credits_used),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = stringResource(R.string.watch_video_to_earn),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = PinkAccent
-                )
-            } else {
-                Text(
-                    text = stringResource(R.string.daily_credits_progress, credits, max),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            Spacer(Modifier.height(12.dp))
-            LinearProgressIndicator(
-                progress = { progress },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(8.dp)
-                    .clip(RoundedCornerShape(8.dp)),
-                color = PinkAccent,
-                trackColor = PinkAccent.copy(alpha = 0.12f)
+private fun UserBubble(text: String) {
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+        Surface(
+            shape = RoundedCornerShape(20.dp, 20.dp, 6.dp, 20.dp),
+            color = PinkAccent,
+            modifier = Modifier.widthIn(max = 320.dp)
+        ) {
+            Text(
+                text = text,
+                color = MaterialTheme.colorScheme.onPrimary,
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
             )
         }
     }
 }
 
 @Composable
-private fun RewardCard(enabled: Boolean, onWatch: () -> Unit) {
-    Card(
+private fun AssistantImageBubble(image: GeneratedImage, onOpen: () -> Unit) {
+    val ratio = (image.width.toFloat() / image.height.coerceAtLeast(1).toFloat()).coerceIn(0.6f, 1.8f)
+    Row(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        horizontalArrangement = Arrangement.Start,
+        verticalAlignment = Alignment.Top
     ) {
-        Column(Modifier.padding(20.dp)) {
-            Text(stringResource(R.string.need_more_credits), style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(6.dp))
+        KolponaMark(size = 28.dp)
+        Spacer(Modifier.size(8.dp))
+        Column(modifier = Modifier.widthIn(max = 320.dp)) {
             Text(
-                text = stringResource(R.string.watch_video_card_body, CreditConfig.REWARDED_VIDEO_REWARD),
+                text = stringResource(R.string.chat_image_ready),
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 8.dp)
             )
-            Spacer(Modifier.height(16.dp))
-            OutlinedButton(
-                onClick = onWatch,
-                enabled = enabled,
+            AsyncImage(
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(File(image.localPath))
+                    .crossfade(true)
+                    .build(),
+                contentDescription = stringResource(R.string.cd_generated_image),
+                contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(48.dp),
-                shape = RoundedCornerShape(14.dp)
-            ) {
-                Text(stringResource(R.string.watch_video_reward, CreditConfig.REWARDED_VIDEO_REWARD))
-            }
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = stringResource(R.string.reward_note),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                    .aspectRatio(ratio)
+                    .clip(RoundedCornerShape(20.dp))
+                    .clickable(onClick = onOpen)
             )
         }
+    }
+}
+
+@Composable
+private fun PendingBubble() {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        KolponaMark(size = 28.dp)
+        Spacer(Modifier.size(8.dp))
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    strokeWidth = 2.dp,
+                    color = PinkAccent
+                )
+                Spacer(Modifier.size(10.dp))
+                Text(
+                    text = stringResource(R.string.creating_image),
+                    style = MaterialTheme.typography.bodyLarge
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ErrorBubble(error: GenerationError, onRetry: () -> Unit) {
+    val args = error.formatArgs()
+    val message = if (args != null) {
+        stringResource(error.messageRes(), *args)
+    } else {
+        stringResource(error.messageRes())
+    }
+    Row(modifier = Modifier.fillMaxWidth()) {
+        KolponaMark(size = 28.dp)
+        Spacer(Modifier.size(8.dp))
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.errorContainer,
+            modifier = Modifier.widthIn(max = 320.dp)
+        ) {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                Text(text = message, color = MaterialTheme.colorScheme.onErrorContainer)
+                if (error != GenerationError.EMPTY_PROMPT) {
+                    TextButton(onClick = onRetry) {
+                        Text(stringResource(R.string.try_again), color = PinkAccent)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChatComposer(
+    prompt: String,
+    onPromptChange: (String) -> Unit,
+    style: ImageStyle,
+    onStyle: (ImageStyle) -> Unit,
+    aspectRatio: AspectRatio,
+    onAspect: (AspectRatio) -> Unit,
+    enabled: Boolean,
+    canSend: Boolean,
+    onSend: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.background)
+            .padding(horizontal = 12.dp, vertical = 8.dp)
+    ) {
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(ImageStyle.entries.toList(), key = { it.id }) { item ->
+                FilterChip(
+                    selected = item == style,
+                    onClick = { onStyle(item) },
+                    enabled = enabled,
+                    label = { Text(stringResource(item.labelRes)) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = PinkAccent,
+                        selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                    )
+                )
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            AspectRatio.entries.forEach { ratio ->
+                FilterChip(
+                    selected = ratio == aspectRatio,
+                    onClick = { onAspect(ratio) },
+                    enabled = enabled,
+                    label = { Text(ratio.shortLabel) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = PinkAccent,
+                        selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                    )
+                )
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Surface(
+            shape = RoundedCornerShape(28.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier.padding(start = 4.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.Bottom
+            ) {
+                BasicTextField(
+                    value = prompt,
+                    onValueChange = onPromptChange,
+                    enabled = enabled,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(
+                        color = MaterialTheme.colorScheme.onSurface
+                    ),
+                    cursorBrush = SolidColor(PinkAccent),
+                    maxLines = 5,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                    keyboardActions = KeyboardActions(onSend = { if (canSend) onSend() }),
+                    decorationBox = { inner ->
+                        if (prompt.isEmpty()) {
+                            Text(
+                                text = stringResource(R.string.prompt_hint),
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        inner()
+                    }
+                )
+                FilledIconButton(
+                    onClick = onSend,
+                    enabled = canSend,
+                    modifier = Modifier.size(44.dp),
+                    shape = CircleShape,
+                    colors = IconButtonDefaults.filledIconButtonColors(
+                        containerColor = PinkAccent,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                        disabledContainerColor = PinkAccent.copy(alpha = 0.35f)
+                    )
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.ArrowUpward,
+                        contentDescription = stringResource(R.string.send)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CreditsSheet(credits: Int, enabled: Boolean, onWatch: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp, vertical = 8.dp)
+    ) {
+        Text(stringResource(R.string.need_more_credits), style = MaterialTheme.typography.titleLarge)
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = stringResource(R.string.credits_remaining, credits),
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = stringResource(R.string.watch_video_card_body, CreditConfig.REWARDED_VIDEO_REWARD),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(20.dp))
+        OutlinedButton(
+            onClick = onWatch,
+            enabled = enabled,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Text(stringResource(R.string.watch_video_reward, CreditConfig.REWARDED_VIDEO_REWARD))
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = stringResource(R.string.reward_note),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(28.dp))
     }
 }

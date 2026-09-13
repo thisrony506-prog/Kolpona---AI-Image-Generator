@@ -177,7 +177,7 @@ class PollinationsApiService(
             .url(url)
             .get()
             .header("Accept", accept)
-            .header("User-Agent", "Kolpona/1.2.0 (Android)")
+            .header("User-Agent", "Kolpona/1.4.0 (Android)")
             .build()
         try {
             client.newCall(request).execute().use { response ->

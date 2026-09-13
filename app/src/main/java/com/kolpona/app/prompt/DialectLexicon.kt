@@ -101,7 +101,6 @@ object DialectLexicon {
         "যেখানে" to "where",
         "সময়" to "time",
         "সময়" to "time",
-        "আছে" to "",
         "একটা" to "a",
         "একটি" to "a",
         "একজন" to "a",

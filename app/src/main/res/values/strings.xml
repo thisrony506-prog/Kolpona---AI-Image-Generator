@@ -253,6 +253,7 @@
     <string name="auth_logout_body">You\'ll need to sign in again to use Kolpona.</string>
     <string name="auth_signed_in">Signed in</string>
     <string name="settings_account">Account</string>
+    <string name="settings_cloud_body">Chats, history, settings, and credits are saved to your account. Sign in on another phone to get them back.</string>
     <string name="auth_error_name_required">Enter your name.</string>
     <string name="auth_error_policy">Accept the Privacy Policy and Terms of Use to continue.</string>
     <string name="auth_error_email_required">Enter your email address.</string>

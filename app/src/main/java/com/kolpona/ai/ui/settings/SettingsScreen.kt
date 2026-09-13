@@ -108,6 +108,12 @@ fun SettingsScreen(
                     color = SoftWhite,
                     style = MaterialTheme.typography.bodyLarge
                 )
+                Text(
+                    text = stringResource(R.string.settings_cloud_body),
+                    color = MutedGray,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
                 Spacer(Modifier.height(8.dp))
                 SettingRow(
                     title = stringResource(R.string.auth_logout),

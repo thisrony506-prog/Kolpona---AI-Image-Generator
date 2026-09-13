@@ -8,8 +8,11 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface GeneratedImageDao {
-    @Query("SELECT * FROM generated_images ORDER BY createdAtEpochMs DESC")
-    fun observeAll(): Flow<List<GeneratedImageEntity>>
+    @Query("SELECT * FROM generated_images WHERE ownerUid = :uid ORDER BY createdAtEpochMs DESC")
+    fun observeForOwner(uid: String): Flow<List<GeneratedImageEntity>>
+
+    @Query("SELECT * FROM generated_images WHERE ownerUid = :uid ORDER BY createdAtEpochMs DESC")
+    suspend fun listForOwner(uid: String): List<GeneratedImageEntity>
 
     @Query("SELECT * FROM generated_images WHERE id = :id LIMIT 1")
     suspend fun getById(id: String): GeneratedImageEntity?
@@ -23,6 +26,9 @@ interface GeneratedImageDao {
     @Query("DELETE FROM generated_images WHERE id = :id")
     suspend fun deleteById(id: String)
 
-    @Query("DELETE FROM generated_images")
-    suspend fun deleteAll()
+    @Query("DELETE FROM generated_images WHERE ownerUid = :uid")
+    suspend fun deleteAllForOwner(uid: String)
+
+    @Query("UPDATE generated_images SET ownerUid = :uid WHERE ownerUid = ''")
+    suspend fun claimOrphans(uid: String)
 }

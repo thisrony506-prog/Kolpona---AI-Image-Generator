@@ -1,5 +1,7 @@
 package com.kolpona.ai.domain.manager
 
+import com.kolpona.ai.data.cloud.CloudWallet
+import com.kolpona.ai.data.cloud.UserCloudRepository
 import com.kolpona.ai.data.prefs.AppPreferences
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.sync.Mutex
@@ -8,16 +10,20 @@ import java.time.LocalDate
 import java.time.ZoneId
 
 /**
- * Owns the local credit wallet.
+ * Owns the credit wallet for the signed-in Firebase user.
  *
  * Daily reset compares calendar dates in the device time zone and runs at most once per local day.
  * If the clock / time zone moves backwards, credits are not granted again.
  *
  * Generation deductions and rewarded grants are idempotent per transaction id so rotation,
  * retries, and duplicate SDK callbacks cannot apply the same transaction twice.
+ *
+ * The wallet is mirrored to Firestore `users/{uid}` so a reinstall or new phone restores it.
  */
 class CreditManager(
-    private val preferences: AppPreferences
+    private val preferences: AppPreferences,
+    private val cloud: UserCloudRepository,
+    private val uid: () -> String?
 ) {
     private val mutex = Mutex()
     private val processedGenerationIds = LinkedHashSet<String>()
@@ -42,10 +48,9 @@ class CreditManager(
                     preferences.setCredits(CreditConfig.DAILY_INITIAL_CREDITS)
                     preferences.setLastResetEpochDay(today)
                 }
-                // today == last → already reset today
-                // today < last → clock/timezone moved backwards; do not grant extra credits
             }
         }
+        pushWallet()
     }
 
     suspend fun canGenerate(): Boolean {
@@ -53,24 +58,43 @@ class CreditManager(
         return preferences.getCredits() >= CreditConfig.GENERATION_COST
     }
 
-    suspend fun deductForSuccessfulGeneration(generationId: String): Boolean = mutex.withLock {
-        if (!processedGenerationIds.add(generationId)) return false
-        trim(processedGenerationIds)
-        val current = preferences.getCredits()
-        if (current < CreditConfig.GENERATION_COST) {
-            processedGenerationIds.remove(generationId)
-            return false
+    suspend fun deductForSuccessfulGeneration(generationId: String): Boolean {
+        val ok = mutex.withLock {
+            if (!processedGenerationIds.add(generationId)) return false
+            trim(processedGenerationIds)
+            val current = preferences.getCredits()
+            if (current < CreditConfig.GENERATION_COST) {
+                processedGenerationIds.remove(generationId)
+                return false
+            }
+            preferences.setCredits(current - CreditConfig.GENERATION_COST)
+            true
         }
-        preferences.setCredits(current - CreditConfig.GENERATION_COST)
-        true
+        if (ok) pushWallet()
+        return ok
     }
 
-    suspend fun grantRewarded(token: String): Boolean = mutex.withLock {
-        if (!processedRewardTokens.add(token)) return false
-        trim(processedRewardTokens)
-        val current = preferences.getCredits()
-        preferences.setCredits(current + CreditConfig.REWARDED_VIDEO_REWARD)
-        true
+    suspend fun grantRewarded(token: String): Boolean {
+        val ok = mutex.withLock {
+            if (!processedRewardTokens.add(token)) return@withLock false
+            trim(processedRewardTokens)
+            val current = preferences.getCredits()
+            preferences.setCredits(current + CreditConfig.REWARDED_VIDEO_REWARD)
+            true
+        }
+        if (ok) pushWallet()
+        return ok
+    }
+
+    private fun pushWallet() {
+        val id = uid() ?: return
+        if (id.isBlank()) return
+        cloud.enqueue {
+            cloud.saveWallet(
+                id,
+                CloudWallet(preferences.getCredits(), preferences.getLastResetEpochDay())
+            )
+        }
     }
 
     private fun trim(set: LinkedHashSet<String>) {

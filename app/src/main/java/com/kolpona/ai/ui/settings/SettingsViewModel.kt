@@ -4,6 +4,8 @@ import android.app.Activity
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.kolpona.ai.data.auth.AuthRepository
+import com.kolpona.ai.data.cloud.CloudSettings
+import com.kolpona.ai.data.cloud.UserCloudRepository
 import com.kolpona.ai.data.prefs.AppPreferences
 import com.kolpona.ai.data.repository.HistoryRepository
 import com.kolpona.ai.di.AppContainer
@@ -32,7 +34,8 @@ data class SettingsUiState(
 class SettingsViewModel(
     private val preferences: AppPreferences,
     private val history: HistoryRepository,
-    private val auth: AuthRepository
+    private val auth: AuthRepository,
+    private val cloud: UserCloudRepository
 ) : ViewModel() {
 
     val themeMode: StateFlow<ThemeMode> = preferences.themeMode
@@ -49,19 +52,51 @@ class SettingsViewModel(
         .map { it?.email?.takeIf { email -> email.isNotBlank() } ?: it?.displayName }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), auth.currentUser?.email)
 
-    fun setTheme(mode: ThemeMode) = viewModelScope.launch { preferences.setThemeMode(mode) }
-    fun setQuality(quality: ImageQuality) = viewModelScope.launch { preferences.setImageQuality(quality) }
-    fun setStyle(style: ImageStyle) = viewModelScope.launch { preferences.setDefaultStyle(style) }
-    fun setAspect(ratio: AspectRatio) = viewModelScope.launch { preferences.setDefaultAspectRatio(ratio) }
-    fun setEnhance(enabled: Boolean) = viewModelScope.launch { preferences.setEnhancePrompts(enabled) }
+    fun setTheme(mode: ThemeMode) = viewModelScope.launch {
+        preferences.setThemeMode(mode)
+        pushSettings()
+    }
+    fun setQuality(quality: ImageQuality) = viewModelScope.launch {
+        preferences.setImageQuality(quality)
+        pushSettings()
+    }
+    fun setStyle(style: ImageStyle) = viewModelScope.launch {
+        preferences.setDefaultStyle(style)
+        pushSettings()
+    }
+    fun setAspect(ratio: AspectRatio) = viewModelScope.launch {
+        preferences.setDefaultAspectRatio(ratio)
+        pushSettings()
+    }
+    fun setEnhance(enabled: Boolean) = viewModelScope.launch {
+        preferences.setEnhancePrompts(enabled)
+        pushSettings()
+    }
     fun clearHistory() = viewModelScope.launch { history.clear() }
     fun signOut(activity: Activity) = viewModelScope.launch { auth.signOut(activity) }
+
+    private fun pushSettings() {
+        val uid = auth.currentUser?.uid ?: return
+        cloud.enqueue {
+            cloud.saveSettings(
+                uid,
+                CloudSettings(
+                    themeMode = preferences.themeModeValue().name,
+                    style = preferences.styleValue().id,
+                    aspect = preferences.aspectValue().id,
+                    quality = preferences.qualityValue().id,
+                    enhance = preferences.enhanceValue()
+                )
+            )
+        }
+    }
 
     companion object {
         fun create(container: AppContainer) = SettingsViewModel(
             preferences = container.preferences,
             history = container.historyRepository,
-            auth = container.authRepository
+            auth = container.authRepository,
+            cloud = container.cloudRepository
         )
     }
 }

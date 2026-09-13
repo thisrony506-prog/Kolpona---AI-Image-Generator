@@ -1,40 +1,74 @@
 package com.kolpona.ai.data.repository
 
+import com.kolpona.ai.data.cloud.UserCloudRepository
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import com.kolpona.ai.data.database.ChatDao
 import com.kolpona.ai.data.database.ChatMessageEntity
 import com.kolpona.ai.data.database.ChatSessionEntity
 import com.kolpona.ai.domain.model.GenerationError
 import com.kolpona.ai.ui.home.ChatItem
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import java.util.UUID
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class ChatRepository(
     private val dao: ChatDao,
-    private val history: HistoryRepository
+    private val history: HistoryRepository,
+    private val cloud: UserCloudRepository
 ) {
-    fun observeSessions(): Flow<List<ChatSessionEntity>> = dao.observeSessions()
+    private val ownerUid = MutableStateFlow("")
 
-    suspend fun latestOrCreate(): ChatSessionEntity = dao.latestSession() ?: createSession()
+    fun setOwnerUid(uid: String) {
+        ownerUid.value = uid
+    }
+
+    fun observeSessions(): Flow<List<ChatSessionEntity>> =
+        ownerUid.flatMapLatest { uid ->
+            if (uid.isBlank()) flowOf(emptyList()) else dao.observeSessions(uid)
+        }
+
+    suspend fun listLocal(): List<ChatSessionEntity> {
+        val uid = ownerUid.value
+        if (uid.isBlank()) return emptyList()
+        return dao.listSessions(uid)
+    }
+
+    suspend fun rawMessages(sessionId: String): List<ChatMessageEntity> = dao.messagesFor(sessionId)
+
+    suspend fun latestOrCreate(): ChatSessionEntity {
+        val uid = ownerUid.value
+        if (uid.isBlank()) return placeholder()
+        return dao.latestSession(uid) ?: createSession()
+    }
 
     suspend fun createSession(): ChatSessionEntity {
         val session = ChatSessionEntity(
             id = UUID.randomUUID().toString(),
             title = "New chat",
             updatedAtEpochMs = System.currentTimeMillis(),
-            lastPrompt = ""
+            lastPrompt = "",
+            ownerUid = ownerUid.value
         )
         dao.upsertSession(session)
+        pushChat(session, emptyList())
         return session
     }
 
     suspend fun rename(id: String, title: String) {
         val current = dao.getSession(id) ?: return
-        dao.upsertSession(current.copy(title = title.take(80).ifBlank { current.title }))
+        val updated = current.copy(title = title.take(80).ifBlank { current.title })
+        dao.upsertSession(updated)
+        pushChat(updated, dao.messagesFor(id))
     }
 
     suspend fun delete(id: String) {
         dao.deleteMessages(id)
         dao.deleteSession(id)
+        val uid = ownerUid.value
+        if (uid.isNotBlank()) cloud.enqueue { cloud.deleteChat(uid, id) }
     }
 
     suspend fun loadMessages(sessionId: String): Pair<List<ChatItem>, String> {
@@ -69,26 +103,57 @@ class ChatRepository(
         lastPrompt: String,
         messages: List<ChatItem>
     ) {
+        if (sessionId.isBlank()) return
+        val uid = ownerUid.value
         dao.deleteMessages(sessionId)
         val now = System.currentTimeMillis()
+        val rows = mutableListOf<ChatMessageEntity>()
         messages.filterNot { it is ChatItem.Pending }.forEachIndexed { index, item ->
             val row = when (item) {
-                is ChatItem.User -> ChatMessageEntity(item.key, sessionId, "user", item.text, null, now + index)
-                is ChatItem.AssistantText -> ChatMessageEntity(item.key, sessionId, "assistant", item.text, null, now + index)
-                is ChatItem.Error -> ChatMessageEntity(item.key, sessionId, "error", item.error.name, null, now + index)
-                is ChatItem.Image -> ChatMessageEntity(item.key, sessionId, "media", item.image.prompt, item.image.id, now + index)
+                is ChatItem.User -> ChatMessageEntity(item.key, sessionId, "user", item.text, null, now + index, uid)
+                is ChatItem.AssistantText -> ChatMessageEntity(item.key, sessionId, "assistant", item.text, null, now + index, uid)
+                is ChatItem.Error -> ChatMessageEntity(item.key, sessionId, "error", item.error.name, null, now + index, uid)
+                is ChatItem.Image -> ChatMessageEntity(item.key, sessionId, "media", item.image.prompt, item.image.id, now + index, uid)
                 is ChatItem.Pending -> null
             } ?: return@forEachIndexed
             dao.insertMessage(row)
+            rows += row
         }
         val title = titleHint.trim().ifBlank { "New chat" }.take(48)
-        dao.upsertSession(
-            ChatSessionEntity(
-                id = sessionId,
-                title = title,
-                updatedAtEpochMs = now,
-                lastPrompt = lastPrompt
-            )
+        val session = ChatSessionEntity(
+            id = sessionId,
+            title = title,
+            updatedAtEpochMs = now,
+            lastPrompt = lastPrompt,
+            ownerUid = uid
         )
+        dao.upsertSession(session)
+        pushChat(session, rows)
     }
+
+    suspend fun replaceFromCloud(session: ChatSessionEntity, messages: List<ChatMessageEntity>) {
+        dao.upsertSession(session.copy(ownerUid = ownerUid.value.ifBlank { session.ownerUid }))
+        dao.deleteMessages(session.id)
+        messages.forEach { dao.insertMessage(it.copy(ownerUid = ownerUid.value.ifBlank { it.ownerUid })) }
+    }
+
+    suspend fun claimOrphans(uid: String) {
+        if (uid.isBlank()) return
+        dao.claimSessionOrphans(uid)
+        dao.claimMessageOrphans(uid)
+    }
+
+    private fun pushChat(session: ChatSessionEntity, messages: List<ChatMessageEntity>) {
+        val uid = ownerUid.value
+        if (uid.isBlank() || session.id.isBlank()) return
+        cloud.enqueue { cloud.upsertChat(uid, session.copy(ownerUid = uid), messages) }
+    }
+
+    private fun placeholder() = ChatSessionEntity(
+        id = "",
+        title = "New chat",
+        updatedAtEpochMs = 0L,
+        lastPrompt = "",
+        ownerUid = ""
+    )
 }

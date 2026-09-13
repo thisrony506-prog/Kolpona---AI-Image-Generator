@@ -2,7 +2,7 @@
 
 Turn Your Imagination Into Images.
 
-Native Android app (Kotlin, Jetpack Compose, Material 3) that races Hugging Face FLUX.1-dev and Cloudflare FLUX.1-schnell, keeps 100 daily credits on-device, and offers optional Start.io rewarded videos for +25 credits.
+Native Android app (Kotlin, Jetpack Compose, Material 3) that races Hugging Face FLUX.1-dev and Cloudflare FLUX.1-schnell, keeps 100 daily credits per signed-in Firebase user, and offers optional Start.io rewarded videos for +25 credits.
 
 ## Requirements
 
@@ -58,8 +58,10 @@ Credits reset once per local calendar day to exactly 100. Extra credits from ads
 app/src/main/java/com/kolpona/ai/
   ads/          Start.io rewarded video
   data/api/     Hugging Face + Cloudflare clients
-  data/database Room history
-  data/prefs    DataStore (credits, settings)
+  data/auth     Firebase Auth
+  data/cloud    Firestore users/{uid} + Storage media
+  data/database Room cache (per UID)
+  data/prefs    DataStore (per-UID credits, settings)
   data/repository
   domain/manager CreditManager + CreditConfig
   ui/           Compose screens
@@ -112,7 +114,28 @@ Existing CI secrets (generation only, not updates):
 - `CLOUDFLARE_ACCOUNT_ID`
 - `CLOUDFLARE_API_TOKEN`
 
-### 8. Build the Release APK with GitHub Actions
+### 8. Firebase Auth + Cloud Firestore
+
+Each signed-in user is isolated under their Firebase UID:
+
+```
+Firebase Auth  →  UID  →  Cloud Firestore  users/{UID}
+                                      ├─ profile, settings, credits
+                                      ├─ history/{id}
+                                      └─ chats/{id}/messages/{id}
+Firebase Storage  users/{UID}/media/{id}
+```
+
+In the Firebase Console for project `kolpona-ai`:
+
+1. Authentication: Email/Password and Google stay enabled.
+2. Create a **Cloud Firestore** database (production mode).
+3. Paste `firestore.rules` from this repo into Firestore Rules and publish.
+4. Enable **Storage**, paste `storage.rules`, and publish.
+
+The Android app never ships a Firebase admin key. It uses `app/google-services.json` plus the signed-in user token. If Firestore or Storage is not created yet, Kolpona still works on-device and retries cloud writes later.
+
+### 9. Build the Release APK with GitHub Actions
 
 Workflow: `.github/workflows/android.yml`
 

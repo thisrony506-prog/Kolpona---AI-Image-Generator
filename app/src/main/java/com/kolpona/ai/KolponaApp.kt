@@ -19,6 +19,7 @@ class KolponaApp : Application() {
         runCatching { FirebaseApp.initializeApp(this) }
         container = AppContainer(this)
         container.adManager.initialize()
+        container.userSessionSync.start()
         UpdateCheckWorker.schedule(this)
         runCatching {
             FirebaseMessaging.getInstance().subscribeToTopic(KolponaNotifier.TOPIC_UPDATES)

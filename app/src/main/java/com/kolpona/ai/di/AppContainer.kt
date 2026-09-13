@@ -8,6 +8,8 @@ import com.kolpona.ai.data.api.CloudflareApiService
 import com.kolpona.ai.data.api.GenerationRouter
 import com.kolpona.ai.data.api.HuggingFaceApiService
 import com.kolpona.ai.data.api.TextNormalizeService
+import com.kolpona.ai.data.cloud.UserCloudRepository
+import com.kolpona.ai.data.cloud.UserSessionSync
 import com.kolpona.ai.data.database.KolponaDatabase
 import com.kolpona.ai.data.prefs.AppPreferences
 import com.kolpona.ai.data.repository.ChatRepository
@@ -26,18 +28,39 @@ import java.util.concurrent.TimeUnit
 
 class AppContainer(app: Application) {
     val preferences: AppPreferences = AppPreferences(app)
-    val creditManager: CreditManager = CreditManager(preferences)
-    val database: KolponaDatabase = KolponaDatabase.create(app)
-    val imageStore: ImageFileStore = ImageFileStore(app)
-    val historyRepository: HistoryRepository = HistoryRepository(database.generatedImageDao(), imageStore)
-    val chatRepository: ChatRepository = ChatRepository(database.chatDao(), historyRepository)
     val networkMonitor: NetworkMonitor = NetworkMonitor(app)
     val authRepository: AuthRepository = AuthRepository(app, networkMonitor)
+    val imageStore: ImageFileStore = ImageFileStore(app)
+    val cloudRepository: UserCloudRepository = UserCloudRepository(app, networkMonitor, imageStore)
+    val creditManager: CreditManager = CreditManager(
+        preferences = preferences,
+        cloud = cloudRepository,
+        uid = { authRepository.currentUser?.uid }
+    )
+    val database: KolponaDatabase = KolponaDatabase.create(app)
+    val historyRepository: HistoryRepository = HistoryRepository(
+        database.generatedImageDao(),
+        imageStore,
+        cloudRepository
+    )
+    val chatRepository: ChatRepository = ChatRepository(
+        database.chatDao(),
+        historyRepository,
+        cloudRepository
+    )
     val imageSaver: ImageSaver = ImageSaver(app)
     val imageShare: ImageShare = ImageShare(app)
     val adManager: StartIoAdManager = StartIoAdManager(app)
     val notifier: KolponaNotifier = KolponaNotifier(app, preferences)
     val updateManager: AppUpdateManager = AppUpdateManager(app, preferences, networkMonitor, notifier)
+    val userSessionSync: UserSessionSync = UserSessionSync(
+        auth = authRepository,
+        cloud = cloudRepository,
+        preferences = preferences,
+        history = historyRepository,
+        chats = chatRepository,
+        credits = creditManager
+    )
 
     private val okHttpClient: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
@@ -61,4 +84,13 @@ class AppContainer(app: Application) {
         networkMonitor = networkMonitor,
         notifier = notifier
     )
+
+    init {
+        val uid = authRepository.currentUser?.uid.orEmpty()
+        if (uid.isNotBlank()) {
+            historyRepository.setOwnerUid(uid)
+            chatRepository.setOwnerUid(uid)
+            preferences.bindUid(uid)
+        }
+    }
 }

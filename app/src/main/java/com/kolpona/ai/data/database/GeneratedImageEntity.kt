@@ -19,7 +19,8 @@ data class GeneratedImageEntity(
     val createdAtEpochMs: Long,
     val creditsUsed: Int,
     val mediaType: String = MediaKind.IMAGE.id,
-    val durationMs: Long = 0L
+    val durationMs: Long = 0L,
+    val ownerUid: String = ""
 ) {
     fun toModel(): GeneratedImage = GeneratedImage(
         id = id,
@@ -38,7 +39,7 @@ data class GeneratedImageEntity(
     )
 
     companion object {
-        fun from(model: GeneratedImage): GeneratedImageEntity = GeneratedImageEntity(
+        fun from(model: GeneratedImage, ownerUid: String): GeneratedImageEntity = GeneratedImageEntity(
             id = model.id,
             prompt = model.prompt,
             enhancedPrompt = model.enhancedPrompt,
@@ -51,7 +52,8 @@ data class GeneratedImageEntity(
             createdAtEpochMs = model.createdAtEpochMs,
             creditsUsed = model.creditsUsed,
             mediaType = model.mediaType,
-            durationMs = model.durationMs
+            durationMs = model.durationMs,
+            ownerUid = ownerUid
         )
     }
 }

@@ -31,23 +31,16 @@ jobs:
 
       - name: Install Android platform 35
         run: |
-          set -e
-          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT}"
-          echo "ANDROID_HOME=${ANDROID_HOME}"
-          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME}}"
           yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+          sdkmanager "platforms;android-34" "build-tools;34.0.0" "platform-tools"
 
       - name: Write local.properties
         env:
           POLLINATIONS_API_KEY: ${{ secrets.POLLINATIONS_API_KEY }}
         run: |
-          SDK_PATH="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/android-sdk}}"
-          {
-            echo "sdk.dir=${SDK_PATH}"
-            echo "POLLINATIONS_API_KEY=${POLLINATIONS_API_KEY}"
-          } > local.properties
-          echo "local.properties sdk.dir=$(grep sdk.dir local.properties)"
+          SDK_PATH="${ANDROID_SDK_ROOT:-${ANDROID_HOME}}"
+          printf 'sdk.dir=%s\nPOLLINATIONS_API_KEY=%s\n' "$SDK_PATH" "$POLLINATIONS_API_KEY" > local.properties
+          echo "Using SDK $SDK_PATH"
 
       - name: Make Gradle wrapper executable
         run: chmod +x gradlew
@@ -55,24 +48,27 @@ jobs:
       - name: Build Release APK
         run: |
           set -o pipefail
-          ./gradlew assembleRelease --stacktrace --no-daemon --warning-mode all | tee gradle-build.log
+          ./gradlew assembleRelease --stacktrace --no-daemon 2>&1 | tee gradle-build.log
 
-      - name: Annotate Gradle failure
+      - name: Publish Gradle failure
         if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           python3 - << 'PY'
           from pathlib import Path
-          p = Path("gradle-build.log")
-          text = p.read_text(errors="replace") if p.exists() else "no gradle-build.log"
+          text = Path("gradle-build.log").read_text(errors="replace") if Path("gradle-build.log").exists() else "no gradle-build.log"
           lines = text.splitlines()
-          hits = []
+          start = 0
           for i, line in enumerate(lines):
-              if any(s in line for s in ("FAILURE", "What went wrong", "error:", "e: file://", "Could not", "Execution failed")):
-                  hits.extend(lines[max(0, i):min(len(lines), i + 12)])
-          snippet = "\n".join(hits[-100:] or lines[-80:])[-5500:]
-          for line in snippet.splitlines() or ["unknown gradle failure"]:
-              print(f"::error::{line}")
+              if line.startswith("FAILURE:") or "What went wrong" in line or line.startswith("e: "):
+                  start = i
+                  break
+          snippet = "\n".join(lines[start:] or lines[-100:])[-12000:]
+          Path("/tmp/fail.md").write_text("Kolpona CI Gradle failure:\n\n```\n" + snippet + "\n```\n")
+          print(snippet)
           PY
+          gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/comments" -f body="$(cat /tmp/fail.md)" || true
 
       - name: Upload Gradle log
         if: always()
@@ -86,5 +82,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: app-release
-          path: app/build/outputs/apk/release/app-release.apk
+          path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error

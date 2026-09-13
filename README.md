@@ -89,7 +89,18 @@ Edit `GENERATION_COST` in the same `CreditConfig.kt` file.
 
 Edit `REWARDED_VIDEO_REWARD` in the same `CreditConfig.kt` file.
 
-### 7. Build the Release APK with GitHub Actions
+### 7. Mandatory in-app updates
+
+Each CI build publishes a public `version.json` + APK on the GitHub Release tag `kolpona-release-apk`. The app checks that file on launch. If `versionCode` is higher, a blocking Update screen appears: no Skip / Later / Close. The APK downloads inside the app, then Android’s installer runs. Chat / History / Settings stay locked until the new version is installed.
+
+**Do not add a GitHub token (or any update secret) to the Android app.** The repository is public; a token inside the APK would leak. `GITHUB_TOKEN` is provided automatically to Actions for creating the release.
+
+Existing CI secrets (generation only, not updates):
+
+- `POLLINATIONS_API_KEY`
+- `HUGGINGFACE_API_KEY`
+
+### 8. Build the Release APK with GitHub Actions
 
 Workflow: `.github/workflows/android.yml`
 

@@ -13,6 +13,7 @@ import com.kolpona.app.data.repository.ChatRepository
 import com.kolpona.app.data.repository.GenerateImageUseCase
 import com.kolpona.app.data.repository.HistoryRepository
 import com.kolpona.app.domain.manager.CreditManager
+import com.kolpona.app.update.AppUpdateManager
 import com.kolpona.app.utils.ImageFileStore
 import com.kolpona.app.utils.ImageSaver
 import com.kolpona.app.utils.ImageShare
@@ -32,6 +33,7 @@ class AppContainer(app: Application) {
     val imageSaver: ImageSaver = ImageSaver(app)
     val imageShare: ImageShare = ImageShare(app)
     val adManager: StartIoAdManager = StartIoAdManager(app)
+    val updateManager: AppUpdateManager = AppUpdateManager(app, preferences, networkMonitor)
 
     private val okHttpClient: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)

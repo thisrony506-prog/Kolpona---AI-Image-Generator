@@ -71,6 +71,39 @@ class AppPreferences(context: Context) {
         dataStore.edit { it[KEY_ENHANCE] = enabled }
     }
 
+    suspend fun getPendingUpdate(): PendingUpdate? {
+        val data = dataStore.data.first()
+        val code = data[KEY_UPDATE_CODE] ?: return null
+        if (code <= 0) return null
+        return PendingUpdate(
+            versionCode = code,
+            versionName = data[KEY_UPDATE_NAME].orEmpty(),
+            apkUrl = data[KEY_UPDATE_URL].orEmpty(),
+            sha256 = data[KEY_UPDATE_SHA].orEmpty(),
+            notes = data[KEY_UPDATE_NOTES].orEmpty()
+        )
+    }
+
+    suspend fun setPendingUpdate(update: PendingUpdate) {
+        dataStore.edit {
+            it[KEY_UPDATE_CODE] = update.versionCode
+            it[KEY_UPDATE_NAME] = update.versionName
+            it[KEY_UPDATE_URL] = update.apkUrl
+            it[KEY_UPDATE_SHA] = update.sha256
+            it[KEY_UPDATE_NOTES] = update.notes
+        }
+    }
+
+    suspend fun clearPendingUpdate() {
+        dataStore.edit {
+            it.remove(KEY_UPDATE_CODE)
+            it.remove(KEY_UPDATE_NAME)
+            it.remove(KEY_UPDATE_URL)
+            it.remove(KEY_UPDATE_SHA)
+            it.remove(KEY_UPDATE_NOTES)
+        }
+    }
+
     private companion object {
         val KEY_CREDITS = intPreferencesKey("credits")
         val KEY_LAST_RESET = longPreferencesKey("last_credit_reset_epoch_day")
@@ -80,5 +113,18 @@ class AppPreferences(context: Context) {
         val KEY_ASPECT = stringPreferencesKey("default_aspect")
         val KEY_QUALITY = stringPreferencesKey("image_quality")
         val KEY_ENHANCE = booleanPreferencesKey("enhance_prompts")
+        val KEY_UPDATE_CODE = intPreferencesKey("pending_update_version_code")
+        val KEY_UPDATE_NAME = stringPreferencesKey("pending_update_version_name")
+        val KEY_UPDATE_URL = stringPreferencesKey("pending_update_apk_url")
+        val KEY_UPDATE_SHA = stringPreferencesKey("pending_update_sha256")
+        val KEY_UPDATE_NOTES = stringPreferencesKey("pending_update_notes")
     }
 }
+
+data class PendingUpdate(
+    val versionCode: Int,
+    val versionName: String,
+    val apkUrl: String,
+    val sha256: String,
+    val notes: String
+)

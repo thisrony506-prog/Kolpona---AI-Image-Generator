@@ -207,4 +207,16 @@
     <string name="ratio_classic">4:3</string>
     <string name="ratio_portrait">3:4</string>
     <string name="ratio_tall">4:5</string>
+
+    <string name="update_required_title">Update required</string>
+    <string name="update_required_body">A new version of Kolpona is ready. Update now to continue. You can\'t use this version until the new one is installed.</string>
+    <string name="update_from_to">%1$s → %2$s</string>
+    <string name="update_download">Download update</string>
+    <string name="update_downloading">Downloading… %d%%</string>
+    <string name="update_install">Install update</string>
+    <string name="update_allow_install">Allow install</string>
+    <string name="update_allow_install_body">Android needs permission for Kolpona to install this update.</string>
+    <string name="update_checking">Checking for update…</string>
+    <string name="update_retry">Try again</string>
+    <string name="update_failed">Couldn\'t download the update. Check your connection and try again.</string>
 </resources>

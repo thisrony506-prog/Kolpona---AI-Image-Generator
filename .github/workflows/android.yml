@@ -86,6 +86,34 @@ jobs:
           path: gradle-build.log
           if-no-files-found: ignore
 
+      - name: Write update manifest
+        if: success()
+        run: |
+          python3 - << 'PY'
+          import hashlib, json, os, re
+          from pathlib import Path
+          gradle = Path("app/build.gradle.kts").read_text()
+          code = int(re.search(r"versionCode\s*=\s*(\d+)", gradle).group(1))
+          name = re.search(r'versionName\s*=\s*"([^"]+)"', gradle).group(1)
+          apk = Path("app/build/outputs/apk/release/app-release.apk")
+          sha = hashlib.sha256(apk.read_bytes()).hexdigest()
+          repo = os.environ["GITHUB_REPOSITORY"]
+          url = f"https://github.com/{repo}/releases/download/kolpona-release-apk/app-release.apk"
+          manifest = {
+              "versionCode": code,
+              "versionName": name,
+              "apkUrl": url,
+              "sha256": sha,
+              "force": True,
+              "notes": f"Kolpona {name}"
+          }
+          text = json.dumps(manifest, indent=2) + "\n"
+          Path("version.json").write_text(text)
+          Path("release").mkdir(exist_ok=True)
+          Path("release/version.json").write_text(text)
+          print(text)
+          PY
+
       - name: Upload Release APK
         uses: actions/upload-artifact@v4
         with:
@@ -100,12 +128,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          APK=$(ls app/build/outputs/apk/release/*.apk | head -1)
+          APK=app/build/outputs/apk/release/app-release.apk
           ls -la app/build/outputs/apk/release/
+          ls -la version.json
           gh release delete kolpona-release-apk --yes || true
-          gh release create kolpona-release-apk "$APK" \
+          gh release create kolpona-release-apk "$APK" version.json \
             --title "Kolpona Release APK" \
-            --notes "Release APK from ${GITHUB_SHA} (Actions run ${GITHUB_RUN_ID}). Sideload-ready; signed with the debug keystore unless RELEASE_STORE_FILE is provided." \
+            --notes "Force-update manifest + APK from ${GITHUB_SHA} (Actions run ${GITHUB_RUN_ID}). Old installs must update in-app before use." \
             --target "$GITHUB_SHA"
 
       - name: Commit Release APK
@@ -114,10 +143,10 @@ jobs:
           set -euo pipefail
           mkdir -p release
           cp app/build/outputs/apk/release/app-release.apk release/app-release.apk
-          ls -la release/app-release.apk
+          ls -la release/app-release.apk release/version.json
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f release/app-release.apk
+          git add -f release/app-release.apk release/version.json
           if git diff --cached --quiet; then
             echo "APK unchanged"
             exit 0

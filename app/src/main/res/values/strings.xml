@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Kolpona</string>
+    <string name="app_full_name">Kolpona – AI Image Generator</string>
+    <string name="app_tagline">Turn Your Imagination Into Images.</string>
+
+    <string name="nav_home">Home</string>
+    <string name="nav_history">History</string>
+    <string name="nav_settings">Settings</string>
+
+    <string name="credits_count">%d Credits</string>
+    <string name="credits_remaining">%d Credits remaining</string>
+    <string name="daily_credits">Daily Credits</string>
+    <string name="daily_credits_progress">%1$d / %2$d</string>
+    <string name="daily_credits_used">Daily credits used</string>
+    <string name="not_enough_credits">Not enough credits</string>
+    <string name="credits_used">%d Credits Used</string>
+
+    <string name="hero_title">Create Something Amazing</string>
+    <string name="hero_subtitle">Turn your imagination into beautiful AI-generated images.</string>
+    <string name="prompt_hint">Describe the image you want...</string>
+    <string name="prompt_label">Prompt</string>
+    <string name="style_label">Style</string>
+    <string name="aspect_ratio_label">Aspect Ratio</string>
+    <string name="quality_label">Quality</string>
+    <string name="model_label">Model</string>
+    <string name="generate_image">Generate Image — %d Credits</string>
+    <string name="generate_image_short">Generate Image · %d</string>
+    <string name="creating_image">Creating your image...</string>
+    <string name="try_again">Try Again</string>
+    <string name="generation_failed">Image generation failed. Your credits were not deducted.</string>
+
+    <string name="need_more_credits">Need More Credits?</string>
+    <string name="watch_video_card_body">Watch a short video and get +%d credits.</string>
+    <string name="watch_video">Watch Video</string>
+    <string name="watch_video_reward">Watch Video +%d Credits</string>
+    <string name="watch_video_to_earn">Watch a video to earn more credits</string>
+    <string name="reward_note">Reward is granted after the video is completed.</string>
+    <string name="credits_added">+%d Credits Added</string>
+
+    <string name="download">Download</string>
+    <string name="share">Share</string>
+    <string name="generate_again">Generate Again</string>
+    <string name="create_another">Create Another</string>
+    <string name="delete">Delete</string>
+    <string name="close">Close</string>
+    <string name="back">Back</string>
+    <string name="settings">Settings</string>
+
+    <string name="history_title">History</string>
+    <string name="history_empty_title">No creations yet</string>
+    <string name="history_empty_body">Your AI-generated images will appear here.</string>
+    <string name="create_first_image">Create Your First Image</string>
+    <string name="delete_image_title">Delete this image?</string>
+    <string name="delete_image_body">This removes the image from your history. It cannot be undone.</string>
+    <string name="image_saved">Saved to Pictures/Kolpona</string>
+    <string name="share_image">Share image</string>
+    <string name="cd_generated_image">Generated image</string>
+    <string name="cd_history_item">History image</string>
+    <string name="cd_logo">Kolpona logo</string>
+    <string name="cd_settings">Settings</string>
+    <string name="cd_credits">Credit balance</string>
+
+    <string name="error_network">No internet connection. Please check your connection and try again.</string>
+    <string name="error_timeout">The request timed out. Please try again.</string>
+    <string name="error_server">The AI service is temporarily unavailable. Please try again later.</string>
+    <string name="error_rate_limit">Too many requests. Please wait a moment and try again.</string>
+    <string name="error_empty_response">We couldn\'t receive the image. Please try again.</string>
+    <string name="error_invalid_prompt">Describe the image you want to create.</string>
+    <string name="error_api">Image generation failed. Your credits were not deducted.</string>
+    <string name="error_insufficient_credits">You need %d credits to generate an image.</string>
+    <string name="error_ad_unavailable">Rewarded video is not available right now. Please try again later.</string>
+    <string name="error_ad_unavailable_short">No rewarded video is available right now. Try again later.</string>
+    <string name="error_save">Couldn\'t save the image. Please try again.</string>
+    <string name="error_generic">Something went wrong. Please try again.</string>
+
+    <string name="onboarding_1_title">Imagine</string>
+    <string name="onboarding_1_body">Describe anything you can imagine.</string>
+    <string name="onboarding_2_title">Create</string>
+    <string name="onboarding_2_body">Kolpona turns your words into AI-generated artwork.</string>
+    <string name="onboarding_3_title">Explore</string>
+    <string name="onboarding_3_body">Generate, save and share your creations.</string>
+    <string name="start_creating">Start Creating</string>
+    <string name="next">Next</string>
+    <string name="skip">Skip</string>
+
+    <string name="settings_title">Settings</string>
+    <string name="settings_appearance">Appearance</string>
+    <string name="settings_generation">Generation</string>
+    <string name="settings_credits">Credits</string>
+    <string name="settings_data">Data</string>
+    <string name="settings_about">About</string>
+    <string name="dark_mode">Dark Mode</string>
+    <string name="theme_system">System</string>
+    <string name="theme_light">Light</string>
+    <string name="theme_dark">Dark</string>
+    <string name="daily_credits_setting">Daily Credits</string>
+    <string name="generation_cost_setting">Generation Cost</string>
+    <string name="ad_reward_setting">Ad Reward</string>
+    <string name="image_quality">Image Quality</string>
+    <string name="default_style">Default Style</string>
+    <string name="default_aspect_ratio">Default Aspect Ratio</string>
+    <string name="enhance_prompts">Enhance prompts</string>
+    <string name="enhance_prompts_subtitle">Add style detail locally. No extra AI request.</string>
+    <string name="quality_standard">Standard</string>
+    <string name="quality_high">High</string>
+    <string name="clear_history">Clear History</string>
+    <string name="clear_history_confirm_title">Clear all history?</string>
+    <string name="clear_history_confirm_body">This permanently deletes every saved creation on this device.</string>
+    <string name="clear">Clear</string>
+    <string name="cancel">Cancel</string>
+    <string name="privacy_policy">Privacy Policy</string>
+    <string name="terms_of_use">Terms of Use</string>
+    <string name="about_kolpona">About Kolpona</string>
+    <string name="developer_note">Credit amounts are set by the app and can\'t be changed here.</string>
+    <string name="version_format">Version %1$s (%2$d)</string>
+
+    <string name="style_realistic">Realistic</string>
+    <string name="style_anime">Anime</string>
+    <string name="style_cinematic">Cinematic</string>
+    <string name="style_digital_art">Digital Art</string>
+    <string name="style_3d">3D</string>
+    <string name="style_fantasy">Fantasy</string>
+    <string name="style_minimal">Minimal</string>
+    <string name="style_portrait">Portrait</string>
+    <string name="style_illustration">Illustration</string>
+
+    <string name="ratio_square">Square 1:1</string>
+    <string name="ratio_portrait">Portrait 4:5</string>
+    <string name="ratio_landscape">Landscape 16:9</string>
+</resources>

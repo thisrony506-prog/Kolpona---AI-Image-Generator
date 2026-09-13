@@ -1,0 +1,9 @@
+## This file is a template. Copy it to local.properties (gitignored).
+## Android Studio will also write sdk.dir automatically.
+
+# sdk.dir=/Users/YOU/Library/Android/sdk
+
+# Temporary development credential for Pollinations.
+# Replace before production. Never commit the real key.
+# Get a key at https://enter.pollinations.ai
+POLLINATIONS_API_KEY=

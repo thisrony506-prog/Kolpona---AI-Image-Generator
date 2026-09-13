@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="kolpona_pink">#EC4899</color>
+    <color name="kolpona_pink_soft">#FF88B2</color>
+    <color name="kolpona_bg">#FAFAFA</color>
+    <color name="kolpona_bg_dark">#0C0C0E</color>
+    <color name="kolpona_black">#0F0F10</color>
+    <color name="ic_launcher_background">#FF88B2</color>
+</resources>

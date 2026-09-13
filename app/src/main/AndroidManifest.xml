@@ -27,6 +27,10 @@
             <action android:name="android.intent.action.VIEW" />
             <data android:mimeType="application/vnd.android.package-archive" />
         </intent>
+        <intent>
+            <action android:name="android.intent.action.DELETE" />
+            <data android:scheme="package" />
+        </intent>
         <package android:name="com.google.android.gms" />
         <intent>
             <action android:name="android.support.customtabs.action.CustomTabsService" />

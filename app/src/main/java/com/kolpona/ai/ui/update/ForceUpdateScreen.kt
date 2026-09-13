@@ -171,6 +171,14 @@ fun ForceUpdateScreen(manager: AppUpdateManager) {
                             textAlign = TextAlign.Center
                         )
                     }
+                    required?.phase == UpdatePhase.SignatureConflict -> {
+                        Text(
+                            text = stringResource(R.string.update_signature_body),
+                            color = Color(0xFFFFB4AB),
+                            style = MaterialTheme.typography.bodyMedium,
+                            textAlign = TextAlign.Center
+                        )
+                    }
                     required?.phase == UpdatePhase.Installing -> {
                         CircularProgressIndicator(
                             color = ElectricBlue,
@@ -187,6 +195,7 @@ fun ForceUpdateScreen(manager: AppUpdateManager) {
                 val label = when {
                     required?.error != null -> stringResource(R.string.update_retry)
                     required?.phase == UpdatePhase.NeedsPermission -> stringResource(R.string.update_allow_install)
+                    required?.phase == UpdatePhase.SignatureConflict -> stringResource(R.string.update_uninstall)
                     required?.phase == UpdatePhase.ReadyToInstall -> stringResource(R.string.update_install)
                     required?.phase == UpdatePhase.Installing -> stringResource(R.string.update_install)
                     required?.phase == UpdatePhase.Downloading -> stringResource(
@@ -200,6 +209,7 @@ fun ForceUpdateScreen(manager: AppUpdateManager) {
                     onClick = {
                         when (required?.phase) {
                             UpdatePhase.NeedsPermission -> manager.openInstallPermissionSettings(activity)
+                            UpdatePhase.SignatureConflict -> manager.uninstallForReplace(activity)
                             UpdatePhase.ReadyToInstall, UpdatePhase.Installing -> manager.install(activity)
                             UpdatePhase.ReadyToDownload -> {
                                 if (required.error != null) manager.retry() else manager.download()

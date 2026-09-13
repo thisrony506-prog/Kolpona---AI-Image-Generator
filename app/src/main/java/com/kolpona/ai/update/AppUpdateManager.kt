@@ -2,9 +2,14 @@ package com.kolpona.ai.update
 
 import android.app.Activity
 import android.app.Application
+import android.content.ContentValues
 import android.content.Intent
+import android.content.pm.PackageInfo
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import android.provider.Settings
 import androidx.core.content.FileProvider
 import com.kolpona.ai.BuildConfig
@@ -47,7 +52,8 @@ enum class UpdatePhase {
     Downloading,
     ReadyToInstall,
     NeedsPermission,
-    Installing
+    Installing,
+    SignatureConflict
 }
 
 class AppUpdateManager(
@@ -122,6 +128,11 @@ class AppUpdateManager(
             )
             activity.startActivity(intent)
         }
+    }
+
+    fun uninstallForReplace(activity: Activity) {
+        val intent = Intent(Intent.ACTION_DELETE, Uri.parse("package:${app.packageName}"))
+        activity.startActivity(intent)
     }
 
     fun retry() {
@@ -318,6 +329,17 @@ class AppUpdateManager(
             )
             return
         }
+        if (apkSignatureConflicts(file)) {
+            runCatching { copyApkToDownloads(file, pending.versionName) }
+            emitRequired(
+                versionName = pending.versionName,
+                versionCode = pending.versionCode,
+                notes = pending.notes,
+                phase = UpdatePhase.SignatureConflict,
+                progress = 100
+            )
+            return
+        }
         emitRequired(
             versionName = pending.versionName,
             versionCode = pending.versionCode,
@@ -421,6 +443,65 @@ class AppUpdateManager(
         if (downloadedCode <= BuildConfig.VERSION_CODE) {
             file.delete()
             throw IllegalStateException("stale")
+        }
+    }
+
+    private fun apkSignatureConflicts(file: File): Boolean {
+        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            PackageManager.GET_SIGNING_CERTIFICATES
+        } else {
+            @Suppress("DEPRECATION")
+            PackageManager.GET_SIGNATURES
+        }
+        val incoming = app.packageManager.getPackageArchiveInfo(file.absolutePath, flags) ?: return false
+        incoming.applicationInfo?.apply {
+            sourceDir = file.absolutePath
+            publicSourceDir = file.absolutePath
+        }
+        val installed = runCatching {
+            app.packageManager.getPackageInfo(app.packageName, flags)
+        }.getOrNull() ?: return false
+        val current = signingBytes(installed)
+        val next = signingBytes(incoming)
+        if (current.isEmpty() || next.isEmpty()) return false
+        return current.none { left -> next.any { it.contentEquals(left) } }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun signingBytes(info: PackageInfo): List<ByteArray> {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            val signing = info.signingInfo ?: return emptyList()
+            val certs = if (signing.hasMultipleSigners()) {
+                signing.apkContentsSigners
+            } else {
+                signing.signingCertificateHistory
+            }
+            certs?.map { it.toByteArray() }.orEmpty()
+        } else {
+            info.signatures?.map { it.toByteArray() }.orEmpty()
+        }
+    }
+
+    private fun copyApkToDownloads(file: File, versionName: String) {
+        val name = "Kolpona-$versionName.apk"
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val values = ContentValues().apply {
+                put(MediaStore.Downloads.DISPLAY_NAME, name)
+                put(MediaStore.Downloads.MIME_TYPE, "application/vnd.android.package-archive")
+                put(MediaStore.Downloads.IS_PENDING, 1)
+            }
+            val uri = app.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                ?: return
+            app.contentResolver.openOutputStream(uri)?.use { out ->
+                file.inputStream().use { input -> input.copyTo(out) }
+            }
+            values.clear()
+            values.put(MediaStore.Downloads.IS_PENDING, 0)
+            app.contentResolver.update(uri, values, null, null)
+        } else {
+            val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            dir.mkdirs()
+            file.copyTo(File(dir, name), overwrite = true)
         }
     }
 

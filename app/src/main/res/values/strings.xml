@@ -219,6 +219,8 @@
     <string name="update_checking">Checking for update…</string>
     <string name="update_retry">Try again</string>
     <string name="update_failed">Couldn\'t download the update. Check your connection and try again.</string>
+    <string name="update_signature_body">This device already has Kolpona signed with an older key, so Android blocks an in-place update. Uninstall Kolpona, then install the new APK from Downloads or GitHub. You only need to do this once.</string>
+    <string name="update_uninstall">Uninstall Kolpona</string>
 
     <string name="auth_login_title">Welcome back</string>
     <string name="auth_login_subtitle">Sign in to continue creating with Kolpona.</string>

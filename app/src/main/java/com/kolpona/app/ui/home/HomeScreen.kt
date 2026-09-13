@@ -1,7 +1,16 @@
 package com.kolpona.app.ui.home
 
+import android.Manifest
 import android.app.Activity
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
+import android.speech.RecognizerIntent
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -29,7 +38,10 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.outlined.FileDownload
+import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
@@ -65,6 +77,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -82,6 +95,9 @@ import com.kolpona.app.ui.theme.PinkAccent
 import com.kolpona.app.utils.formatArgs
 import com.kolpona.app.utils.messageRes
 import java.io.File
+import java.util.Locale
+
+private enum class ChatToolTab { Category, Ratio }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -99,6 +115,29 @@ fun HomeScreen(
     val chatItems = state.chatItems()
     val listState = rememberLazyListState()
     var showCreditsSheet by rememberSaveable { mutableStateOf(false) }
+    var toolTab by rememberSaveable { mutableStateOf(ChatToolTab.Category) }
+
+    val voiceLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val spoken = result.data
+            ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+            ?.firstOrNull()
+            ?.trim()
+        if (!spoken.isNullOrBlank()) {
+            viewModel.onPromptChange(
+                if (state.prompt.isBlank()) spoken else "${state.prompt.trim()} $spoken"
+            )
+        }
+    }
+
+    val storagePermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted || Build.VERSION.SDK_INT >= 29) {
+            // Download is triggered from the image row after permission.
+        }
+    }
 
     LaunchedEffect(Unit) {
         activity?.let { viewModel.adManager.preload(it) }
@@ -121,6 +160,8 @@ fun HomeScreen(
                 }
                 HomeEvent.NeedCredits -> showCreditsSheet = true
                 HomeEvent.ShowInterstitial -> activity?.let { viewModel.adManager.showInterstitial(it) }
+                HomeEvent.Saved -> Toast.makeText(context, context.getString(R.string.image_saved), Toast.LENGTH_SHORT).show()
+                HomeEvent.SaveFailed -> Toast.makeText(context, context.getString(R.string.error_save), Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -135,6 +176,33 @@ fun HomeScreen(
         keyboard?.hide()
         focusManager.clearFocus()
         viewModel.send()
+    }
+
+    fun launchVoice() {
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+            putExtra(RecognizerIntent.EXTRA_PROMPT, context.getString(R.string.voice_prompt))
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+        }
+        try {
+            voiceLauncher.launch(intent)
+        } catch (_: ActivityNotFoundException) {
+            Toast.makeText(context, context.getString(R.string.voice_unavailable), Toast.LENGTH_LONG).show()
+        }
+    }
+
+    val audioPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) launchVoice()
+        else Toast.makeText(context, context.getString(R.string.voice_unavailable), Toast.LENGTH_LONG).show()
+    }
+
+    fun startVoice() {
+        val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+            PackageManager.PERMISSION_GRANTED
+        if (granted) launchVoice() else audioPermission.launch(Manifest.permission.RECORD_AUDIO)
     }
 
     Column(
@@ -169,7 +237,14 @@ fun HomeScreen(
                         is ChatItem.User -> UserBubble(item.text)
                         is ChatItem.Image -> AssistantImageBubble(
                             image = item.image,
-                            onOpen = { onOpenImage(item.image.id) }
+                            onOpen = { onOpenImage(item.image.id) },
+                            onDownload = {
+                                if (Build.VERSION.SDK_INT < 29) {
+                                    storagePermission.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                                }
+                                viewModel.download(item.image)
+                            },
+                            onShare = { viewModel.share(item.image, context.getString(R.string.share_image)) }
                         )
                         is ChatItem.Pending -> PendingBubble()
                         is ChatItem.Error -> ErrorBubble(
@@ -181,29 +256,37 @@ fun HomeScreen(
             }
         }
 
-        StartIoBanner(adManager = viewModel.adManager)
-
-        ChatComposer(
-            prompt = state.prompt,
-            onPromptChange = viewModel::onPromptChange,
+        ChatToolTabs(
+            tab = toolTab,
+            onTab = { toolTab = it },
             style = state.style,
             onStyle = viewModel::onStyleSelected,
             aspectRatio = state.aspectRatio,
             onAspect = viewModel::onAspectSelected,
+            enabled = !state.isGenerating
+        )
+
+        ChatComposer(
+            prompt = state.prompt,
+            onPromptChange = viewModel::onPromptChange,
             enabled = !state.isGenerating,
             canSend = state.prompt.isNotBlank() && !state.isGenerating,
+            onVoice = { startVoice() },
             onSend = { send() }
         )
+
+        StartIoBanner(adManager = viewModel.adManager)
     }
 
     if (showCreditsSheet) {
         ModalBottomSheet(
-            onDismissRequest = { showCreditsSheet = false },
+            onDismissRequest = { if (!state.watchingAd) showCreditsSheet = false },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
             containerColor = MaterialTheme.colorScheme.surface
         ) {
             CreditsSheet(
                 credits = state.credits,
+                loading = state.watchingAd,
                 enabled = !state.isGenerating && !state.watchingAd,
                 onWatch = {
                     val host = activity
@@ -293,13 +376,15 @@ private fun EmptyChat(onSuggestion: (String) -> Unit, modifier: Modifier = Modif
         Spacer(Modifier.height(20.dp))
         Text(
             text = stringResource(R.string.chat_greeting),
-            style = MaterialTheme.typography.headlineMedium
+            style = MaterialTheme.typography.headlineMedium,
+            textAlign = TextAlign.Center
         )
         Spacer(Modifier.height(8.dp))
         Text(
             text = stringResource(R.string.chat_greeting_body),
             style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center
         )
         Spacer(Modifier.height(24.dp))
         suggestions.chunked(2).forEach { row ->
@@ -347,7 +432,12 @@ private fun UserBubble(text: String) {
 }
 
 @Composable
-private fun AssistantImageBubble(image: GeneratedImage, onOpen: () -> Unit) {
+private fun AssistantImageBubble(
+    image: GeneratedImage,
+    onOpen: () -> Unit,
+    onDownload: () -> Unit,
+    onShare: () -> Unit
+) {
     val ratio = (image.width.toFloat() / image.height.coerceAtLeast(1).toFloat()).coerceIn(0.6f, 1.8f)
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -376,6 +466,21 @@ private fun AssistantImageBubble(image: GeneratedImage, onOpen: () -> Unit) {
                     .clip(RoundedCornerShape(20.dp))
                     .clickable(onClick = onOpen)
             )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                TextButton(onClick = onDownload, modifier = Modifier.height(44.dp)) {
+                    Icon(Icons.Outlined.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.size(6.dp))
+                    Text(stringResource(R.string.download))
+                }
+                TextButton(onClick = onShare, modifier = Modifier.height(44.dp)) {
+                    Icon(Icons.Outlined.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.size(6.dp))
+                    Text(stringResource(R.string.share))
+                }
+            }
         }
     }
 }
@@ -440,102 +545,76 @@ private fun ErrorBubble(error: GenerationError, onRetry: () -> Unit) {
 }
 
 @Composable
-private fun ChatComposer(
-    prompt: String,
-    onPromptChange: (String) -> Unit,
+private fun ChatToolTabs(
+    tab: ChatToolTab,
+    onTab: (ChatToolTab) -> Unit,
     style: ImageStyle,
     onStyle: (ImageStyle) -> Unit,
     aspectRatio: AspectRatio,
     onAspect: (AspectRatio) -> Unit,
-    enabled: Boolean,
-    canSend: Boolean,
-    onSend: () -> Unit
+    enabled: Boolean
 ) {
-    Column(
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.background)
-            .padding(horizontal = 12.dp, vertical = 8.dp)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        shape = RoundedCornerShape(22.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant
     ) {
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(ImageStyle.entries.toList(), key = { it.id }) { item ->
-                FilterChip(
-                    selected = item == style,
-                    onClick = { onStyle(item) },
-                    enabled = enabled,
-                    label = { Text(stringResource(item.labelRes)) },
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = PinkAccent,
-                        selectedLabelColor = MaterialTheme.colorScheme.onPrimary
-                    )
-                )
-            }
-        }
-        Spacer(Modifier.height(6.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            AspectRatio.entries.forEach { ratio ->
-                FilterChip(
-                    selected = ratio == aspectRatio,
-                    onClick = { onAspect(ratio) },
-                    enabled = enabled,
-                    label = { Text(ratio.shortLabel) },
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = PinkAccent,
-                        selectedLabelColor = MaterialTheme.colorScheme.onPrimary
-                    )
-                )
-            }
-        }
-        Spacer(Modifier.height(8.dp))
-        Surface(
-            shape = RoundedCornerShape(28.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant,
-            modifier = Modifier.fillMaxWidth()
-        ) {
+        Column(Modifier.padding(8.dp)) {
             Row(
-                modifier = Modifier.padding(start = 4.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
-                verticalAlignment = Alignment.Bottom
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(MaterialTheme.colorScheme.background)
             ) {
-                BasicTextField(
-                    value = prompt,
-                    onValueChange = onPromptChange,
-                    enabled = enabled,
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    textStyle = MaterialTheme.typography.bodyLarge.copy(
-                        color = MaterialTheme.colorScheme.onSurface
-                    ),
-                    cursorBrush = SolidColor(PinkAccent),
-                    maxLines = 5,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                    keyboardActions = KeyboardActions(onSend = { if (canSend) onSend() }),
-                    decorationBox = { inner ->
-                        if (prompt.isEmpty()) {
-                            Text(
-                                text = stringResource(R.string.prompt_hint),
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                ToolTab(
+                    label = stringResource(R.string.tab_category),
+                    selected = tab == ChatToolTab.Category,
+                    onClick = { onTab(ChatToolTab.Category) },
+                    modifier = Modifier.weight(1f)
+                )
+                ToolTab(
+                    label = stringResource(R.string.tab_ratio),
+                    selected = tab == ChatToolTab.Ratio,
+                    onClick = { onTab(ChatToolTab.Ratio) },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            when (tab) {
+                ChatToolTab.Category -> {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(ImageStyle.entries.toList(), key = { it.id }) { item ->
+                            FilterChip(
+                                selected = item == style,
+                                onClick = { onStyle(item) },
+                                enabled = enabled,
+                                label = { Text(stringResource(item.labelRes)) },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = PinkAccent,
+                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                                )
                             )
                         }
-                        inner()
                     }
-                )
-                FilledIconButton(
-                    onClick = onSend,
-                    enabled = canSend,
-                    modifier = Modifier.size(44.dp),
-                    shape = CircleShape,
-                    colors = IconButtonDefaults.filledIconButtonColors(
-                        containerColor = PinkAccent,
-                        contentColor = MaterialTheme.colorScheme.onPrimary,
-                        disabledContainerColor = PinkAccent.copy(alpha = 0.35f)
-                    )
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.ArrowUpward,
-                        contentDescription = stringResource(R.string.send)
-                    )
+                }
+                ChatToolTab.Ratio -> {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        AspectRatio.entries.forEach { ratio ->
+                            FilterChip(
+                                selected = ratio == aspectRatio,
+                                onClick = { onAspect(ratio) },
+                                enabled = enabled,
+                                modifier = Modifier.weight(1f),
+                                label = { Text(ratio.shortLabel) },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = PinkAccent,
+                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                                )
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -543,7 +622,113 @@ private fun ChatComposer(
 }
 
 @Composable
-private fun CreditsSheet(credits: Int, enabled: Boolean, onWatch: () -> Unit) {
+private fun ToolTab(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .height(40.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(if (selected) PinkAccent else MaterialTheme.colorScheme.background)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            color = if (selected) MaterialTheme.colorScheme.onPrimary
+            else MaterialTheme.colorScheme.onSurface,
+            fontWeight = FontWeight.SemiBold,
+            style = MaterialTheme.typography.labelLarge
+        )
+    }
+}
+
+@Composable
+private fun ChatComposer(
+    prompt: String,
+    onPromptChange: (String) -> Unit,
+    enabled: Boolean,
+    canSend: Boolean,
+    onVoice: () -> Unit,
+    onSend: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(28.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 2.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.Bottom
+        ) {
+            IconButton(
+                onClick = onVoice,
+                enabled = enabled,
+                modifier = Modifier.size(44.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Mic,
+                    contentDescription = stringResource(R.string.voice_input),
+                    tint = PinkAccent
+                )
+            }
+            BasicTextField(
+                value = prompt,
+                onValueChange = onPromptChange,
+                enabled = enabled,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(vertical = 12.dp),
+                textStyle = MaterialTheme.typography.bodyLarge.copy(
+                    color = MaterialTheme.colorScheme.onSurface
+                ),
+                cursorBrush = SolidColor(PinkAccent),
+                maxLines = 5,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                keyboardActions = KeyboardActions(onSend = { if (canSend) onSend() }),
+                decorationBox = { inner ->
+                    if (prompt.isEmpty()) {
+                        Text(
+                            text = stringResource(R.string.prompt_hint),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    inner()
+                }
+            )
+            FilledIconButton(
+                onClick = onSend,
+                enabled = canSend,
+                modifier = Modifier.size(44.dp),
+                shape = CircleShape,
+                colors = IconButtonDefaults.filledIconButtonColors(
+                    containerColor = PinkAccent,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    disabledContainerColor = PinkAccent.copy(alpha = 0.35f)
+                )
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.ArrowUpward,
+                    contentDescription = stringResource(R.string.send)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CreditsSheet(
+    credits: Int,
+    loading: Boolean,
+    enabled: Boolean,
+    onWatch: () -> Unit
+) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -571,7 +756,17 @@ private fun CreditsSheet(credits: Int, enabled: Boolean, onWatch: () -> Unit) {
                 .height(52.dp),
             shape = RoundedCornerShape(16.dp)
         ) {
-            Text(stringResource(R.string.watch_video_reward, CreditConfig.REWARDED_VIDEO_REWARD))
+            if (loading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    strokeWidth = 2.dp,
+                    color = PinkAccent
+                )
+                Spacer(Modifier.size(10.dp))
+                Text(stringResource(R.string.ad_loading))
+            } else {
+                Text(stringResource(R.string.watch_video_reward, CreditConfig.REWARDED_VIDEO_REWARD))
+            }
         }
         Spacer(Modifier.height(8.dp))
         Text(

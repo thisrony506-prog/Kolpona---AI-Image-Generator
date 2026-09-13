@@ -15,8 +15,7 @@ import java.nio.charset.StandardCharsets
 class GenerationException(val error: GenerationError) : Exception()
 
 /**
- * Centralized Pollinations image client.
- * Tries the authenticated gen.host first, then the public image host.
+ * Pollinations image client. Always requests nologo so the image has no watermark.
  */
 class PollinationsApiService(
     private val client: OkHttpClient
@@ -59,7 +58,7 @@ class PollinationsApiService(
             }
             try {
                 execute(fallback)
-            } catch (second: GenerationException) {
+            } catch (_: GenerationException) {
                 throw first
             }
         }
@@ -81,7 +80,10 @@ class PollinationsApiService(
             .addQueryParameter("width", width.toString())
             .addQueryParameter("height", height.toString())
             .addQueryParameter("nologo", "true")
+            .addQueryParameter("nofeed", "true")
             .addQueryParameter("private", "true")
+            .addQueryParameter("enhance", "false")
+            .addQueryParameter("safe", "false")
             .addQueryParameter("referrer", "kolpona")
         if (seed != null) builder.addQueryParameter("seed", seed.toString())
         return builder.build().toString()
@@ -91,8 +93,8 @@ class PollinationsApiService(
         val request = Request.Builder()
             .url(url)
             .get()
-            .header("Accept", "image/*,*/*")
-            .header("User-Agent", "Kolpona/1.1.0 (Android)")
+            .header("Accept", "image/jpeg,image/png,image/webp,image/*")
+            .header("User-Agent", "Kolpona/1.1.1 (Android)")
             .build()
         try {
             client.newCall(request).execute().use { response ->

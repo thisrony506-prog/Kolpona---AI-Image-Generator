@@ -17,6 +17,8 @@ import com.kolpona.app.domain.model.GenerationOutcome
 import com.kolpona.app.domain.model.ImageModels
 import com.kolpona.app.domain.model.ImageQuality
 import com.kolpona.app.domain.model.ImageStyle
+import com.kolpona.app.utils.ImageSaver
+import com.kolpona.app.utils.ImageShare
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -72,6 +74,8 @@ sealed class HomeEvent {
     data object AdUnavailable : HomeEvent()
     data object NeedCredits : HomeEvent()
     data object ShowInterstitial : HomeEvent()
+    data object Saved : HomeEvent()
+    data object SaveFailed : HomeEvent()
 }
 
 class HomeViewModel(
@@ -79,6 +83,8 @@ class HomeViewModel(
     private val creditManager: CreditManager,
     private val preferences: AppPreferences,
     private val history: HistoryRepository,
+    private val saver: com.kolpona.app.utils.ImageSaver,
+    private val share: com.kolpona.app.utils.ImageShare,
     val adManager: StartIoAdManager
 ) : ViewModel() {
 

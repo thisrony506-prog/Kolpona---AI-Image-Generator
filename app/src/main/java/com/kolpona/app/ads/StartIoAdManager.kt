@@ -3,6 +3,8 @@ package com.kolpona.app.ads
 import android.app.Activity
 import android.app.Application
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.Gravity
 import android.view.View
@@ -13,20 +15,15 @@ import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Start.io ads: rewarded video, interstitial, and banner.
+ * Start.io ads: rewarded video (load-on-click), interstitial, banner.
  *
- * Reflection keeps the app compiling against Start.io 4.x and 5.x.
- * Rewards are granted only from the SDK video-completed callback, once per shown ad.
+ * Rewards are granted only after an ad was actually displayed.
  * Failures never crash the app.
  */
 class StartIoAdManager(
     private val app: Application
 ) {
-    @Volatile
-    private var rewardedAd: Any? = null
-
-    @Volatile
-    private var rewardedReady: Boolean = false
+    private val main = Handler(Looper.getMainLooper())
 
     @Volatile
     private var interstitialAd: Any? = null
@@ -34,9 +31,7 @@ class StartIoAdManager(
     @Volatile
     private var interstitialReady: Boolean = false
 
-    private val rewardLock = Any()
-    private var currentShowToken: String? = null
-    private val rewardConsumed = AtomicBoolean(false)
+    private val showInFlight = AtomicBoolean(false)
 
     fun initialize() {
         try {
@@ -68,35 +63,7 @@ class StartIoAdManager(
     }
 
     fun preload(activity: Activity) {
-        preloadRewarded(activity)
         preloadInterstitial(activity)
-    }
-
-    fun preloadRewarded(activity: Activity) {
-        try {
-            val startAppAdClass = Class.forName("com.startapp.sdk.adsbase.StartAppAd")
-            val ad = startAppAdClass.getConstructor(Context::class.java).newInstance(activity)
-            rewardedReady = false
-            val listener = adListener { ready ->
-                rewardedReady = ready
-                Log.d(TAG, "rewarded load ready=$ready")
-            }
-            val adMode = rewardedMode(startAppAdClass)
-            val loadWithMode = startAppAdClass.methods.find { method ->
-                method.name == "loadAd" && method.parameterCount == 2 &&
-                    method.parameterTypes[1].name.contains("AdEventListener")
-            }
-            if (adMode != null && loadWithMode != null) {
-                loadWithMode.invoke(ad, adMode, listener)
-            } else {
-                startAppAdClass.methods.find { it.name == "loadAd" && it.parameterCount == 1 }
-                    ?.invoke(ad, listener)
-            }
-            rewardedAd = ad
-        } catch (t: Throwable) {
-            Log.w(TAG, "preload rewarded failed", t)
-            rewardedReady = false
-        }
     }
 
     fun preloadInterstitial(activity: Activity) {
@@ -119,92 +86,103 @@ class StartIoAdManager(
         }
     }
 
-    fun isReady(): Boolean {
-        if (rewardedReady && rewardedAd != null) return true
-        val ad = rewardedAd ?: return false
-        return try {
-            val method = ad.javaClass.methods.find { it.name == "isReady" && it.parameterCount == 0 }
-            (method?.invoke(ad) as? Boolean) ?: false
-        } catch (_: Throwable) {
-            false
-        }
-    }
-
+    /**
+     * Loads a rewarded video on demand, then shows it.
+     * Falls back to VIDEO then interstitial so the user actually sees an ad.
+     */
     fun showRewarded(
         activity: Activity,
         onRewarded: (token: String) -> Unit,
         onUnavailable: () -> Unit,
         onClosed: () -> Unit = {}
     ) {
-        val ad = rewardedAd
-        if (ad == null || !isReady()) {
-            onUnavailable()
-            preloadRewarded(activity)
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            main.post { showRewarded(activity, onRewarded, onUnavailable, onClosed) }
             return
         }
+        if (!showInFlight.compareAndSet(false, true)) return
 
         val token = UUID.randomUUID().toString()
-        synchronized(rewardLock) {
-            currentShowToken = token
-            rewardConsumed.set(false)
+        val displayed = AtomicBoolean(false)
+        val granted = AtomicBoolean(false)
+        val finished = AtomicBoolean(false)
+        val loaded = AtomicBoolean(false)
+
+        fun finishUnavailable() {
+            if (finished.compareAndSet(false, true)) {
+                showInFlight.set(false)
+                onUnavailable()
+            }
+        }
+
+        fun finishClosed() {
+            if (finished.compareAndSet(false, true)) {
+                showInFlight.set(false)
+                onClosed()
+                preloadInterstitial(activity)
+            }
+        }
+
+        fun grant() {
+            if (granted.compareAndSet(false, true)) {
+                onRewarded(token)
+            }
         }
 
         try {
-            val videoListenerClass = firstClass(
-                "com.startapp.sdk.adsbase.VideoListener",
-                "com.startapp.sdk.adsbase.adlisteners.VideoListener"
-            ) ?: run {
-                onUnavailable()
-                preloadRewarded(activity)
-                return
-            }
-            val videoListener = Proxy.newProxyInstance(
-                videoListenerClass.classLoader,
-                arrayOf(videoListenerClass)
-            ) { _, method, _ ->
-                if (method.name == "onVideoCompleted" || method.name == "invoke") {
-                    val grant = synchronized(rewardLock) {
-                        if (currentShowToken == token && rewardConsumed.compareAndSet(false, true)) token else null
-                    }
-                    if (grant != null) onRewarded(grant)
+            val startAppAdClass = Class.forName("com.startapp.sdk.adsbase.StartAppAd")
+            val displayListener = displayListener(
+                onDisplayed = { displayed.set(true) },
+                onHidden = {
+                    if (displayed.get()) grant()
+                    finishClosed()
+                },
+                onNotDisplayed = { finishUnavailable() }
+            )
+
+            fun bindAndShow(ad: Any) {
+                loaded.set(true)
+                attachVideoListener(ad) { grant() }
+                val shown = showAd(ad, displayListener)
+                if (shown == false) {
+                    finishUnavailable()
                 }
-                null
             }
-            ad.javaClass.methods.find { it.name == "setVideoListener" }
-                ?.invoke(ad, videoListener)
 
-            rewardedReady = false
-
-            val displayListenerClass = Class.forName("com.startapp.sdk.adsbase.adlisteners.AdDisplayListener")
-            val displayListener = Proxy.newProxyInstance(
-                displayListenerClass.classLoader,
-                arrayOf(displayListenerClass)
-            ) { _, method, _ ->
-                when (method.name) {
-                    "adHidden", "adNotDisplayed" -> {
-                        onClosed()
-                        preloadRewarded(activity)
+            val modes = listOf("REWARDED", "VIDEO", "FULLPAGE", "AUTOMATIC")
+            loadFirstAvailable(
+                startAppAdClass = startAppAdClass,
+                activity = activity,
+                modeHints = modes,
+                onLoaded = { ad -> bindAndShow(ad) },
+                onFailed = {
+                    val cached = interstitialAd
+                    if (cached != null && (interstitialReady || isAdReady(cached))) {
+                        interstitialReady = false
+                        bindAndShow(cached)
+                    } else {
+                        finishUnavailable()
                     }
                 }
-                null
-            }
-            val shown = ad.javaClass.methods.find { method ->
-                method.name == "showAd" && method.parameterCount == 1 &&
-                    method.parameterTypes[0].name.contains("AdDisplayListener")
-            }?.invoke(ad, displayListener)
-                ?: ad.javaClass.methods.find { it.name == "showAd" && it.parameterCount == 0 }?.invoke(ad)
-            if (shown is Boolean && !shown) {
-                onUnavailable()
-                preloadRewarded(activity)
-            }
+            )
+
+            main.postDelayed({
+                if (!loaded.get() && !displayed.get() && !granted.get() && !finished.get()) {
+                    Log.w(TAG, "rewarded wait timed out")
+                    finishUnavailable()
+                }
+            }, 16_000)
         } catch (t: Throwable) {
             Log.w(TAG, "show rewarded failed", t)
-            onUnavailable()
-            preloadRewarded(activity)
+            finishUnavailable()
         }
     }
 
     fun showInterstitial(activity: Activity) {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            main.post { showInterstitial(activity) }
+            return
+        }
         val ad = interstitialAd
         val ready = interstitialReady || isAdReady(ad)
         if (ad == null || !ready) {
@@ -213,21 +191,12 @@ class StartIoAdManager(
         }
         try {
             interstitialReady = false
-            val displayListenerClass = Class.forName("com.startapp.sdk.adsbase.adlisteners.AdDisplayListener")
-            val displayListener = Proxy.newProxyInstance(
-                displayListenerClass.classLoader,
-                arrayOf(displayListenerClass)
-            ) { _, method, _ ->
-                when (method.name) {
-                    "adHidden", "adNotDisplayed" -> preloadInterstitial(activity)
-                }
-                null
-            }
-            ad.javaClass.methods.find { method ->
-                method.name == "showAd" && method.parameterCount == 1 &&
-                    method.parameterTypes[0].name.contains("AdDisplayListener")
-            }?.invoke(ad, displayListener)
-                ?: ad.javaClass.methods.find { it.name == "showAd" && it.parameterCount == 0 }?.invoke(ad)
+            val displayListener = displayListener(
+                onDisplayed = {},
+                onHidden = { preloadInterstitial(activity) },
+                onNotDisplayed = { preloadInterstitial(activity) }
+            )
+            showAd(ad, displayListener)
         } catch (t: Throwable) {
             Log.w(TAG, "show interstitial failed", t)
             preloadInterstitial(activity)
@@ -265,6 +234,139 @@ class StartIoAdManager(
         }
     }
 
+    private fun loadFirstAvailable(
+        startAppAdClass: Class<*>,
+        ad: Any,
+        activity: Activity,
+        modeHints: List<String>,
+        onLoaded: () -> Unit,
+        onFailed: () -> Unit
+    ) {
+        val remaining = modeHints.toMutableList()
+        fun tryNext() {
+            val hint = remaining.removeFirstOrNull()
+            val listener = adListener { ready ->
+                main.post {
+                    if (ready) {
+                        Log.d(TAG, "ad loaded mode=$hint")
+                        onLoaded()
+                    } else if (remaining.isNotEmpty()) {
+                        tryNext()
+                    } else {
+                        onFailed()
+                    }
+                }
+            }
+            val loaded = if (hint == null) {
+                invokeLoad(ad, null, listener)
+            } else {
+                val mode = adMode(startAppAdClass, hint)
+                invokeLoad(ad, mode, listener)
+            }
+            if (!loaded) {
+                if (remaining.isNotEmpty()) tryNext() else onFailed()
+            }
+        }
+        tryNext()
+        activity.hashCode() // keep activity referenced
+    }
+
+    private fun invokeLoad(ad: Any, mode: Any?, listener: Any): Boolean {
+        return try {
+            if (mode != null) {
+                val two = ad.javaClass.methods.find { method ->
+                    method.name == "loadAd" && method.parameterCount == 2 &&
+                        method.parameterTypes[1].name.contains("AdEventListener")
+                }
+                if (two != null) {
+                    two.invoke(ad, mode, listener)
+                    return true
+                }
+            }
+            val one = ad.javaClass.methods.find { it.name == "loadAd" && it.parameterCount == 1 }
+            if (one != null) {
+                one.invoke(ad, listener)
+                true
+            } else {
+                ad.javaClass.methods.find { it.name == "loadAd" && it.parameterCount == 0 }?.invoke(ad)
+                true
+            }
+        } catch (t: Throwable) {
+            Log.w(TAG, "loadAd failed", t)
+            false
+        }
+    }
+
+    private fun showAd(ad: Any, displayListener: Any): Boolean? {
+        return try {
+            val withListener = ad.javaClass.methods.find { method ->
+                method.name == "showAd" && method.parameterCount == 1 &&
+                    method.parameterTypes[0].name.contains("AdDisplayListener")
+            }
+            val result = withListener?.invoke(ad, displayListener)
+                ?: ad.javaClass.methods.find { it.name == "showAd" && it.parameterCount == 0 }?.invoke(ad)
+            result as? Boolean
+        } catch (t: Throwable) {
+            Log.w(TAG, "showAd failed", t)
+            false
+        }
+    }
+
+    private fun attachVideoListener(ad: Any, onCompleted: () -> Unit) {
+        val videoListenerClass = firstClass(
+            "com.startapp.sdk.adsbase.VideoListener",
+            "com.startapp.sdk.adsbase.adlisteners.VideoListener"
+        ) ?: return
+        val videoListener = proxy(videoListenerClass) { name, _ ->
+            if (name == "onVideoCompleted" || name == "invoke") onCompleted()
+            null
+        }
+        runCatching {
+            ad.javaClass.methods.find { it.name == "setVideoListener" }?.invoke(ad, videoListener)
+        }
+    }
+
+    private fun displayListener(
+        onDisplayed: () -> Unit,
+        onHidden: () -> Unit,
+        onNotDisplayed: () -> Unit
+    ): Any {
+        val cls = Class.forName("com.startapp.sdk.adsbase.adlisteners.AdDisplayListener")
+        return proxy(cls) { name, _ ->
+            when (name) {
+                "adDisplayed", "adReceived" -> onDisplayed()
+                "adHidden" -> onHidden()
+                "adNotDisplayed" -> onNotDisplayed()
+            }
+            null
+        }
+    }
+
+    private fun adListener(onReady: (Boolean) -> Unit): Any {
+        val listenerClass = Class.forName("com.startapp.sdk.adsbase.adlisteners.AdEventListener")
+        return proxy(listenerClass) { name, _ ->
+            when (name) {
+                "onReceiveAd" -> onReady(true)
+                "onFailedToReceiveAd" -> onReady(false)
+            }
+            null
+        }
+    }
+
+    private fun proxy(listenerClass: Class<*>, handler: (String, Array<out Any>?) -> Any?): Any {
+        return Proxy.newProxyInstance(
+            listenerClass.classLoader,
+            arrayOf(listenerClass)
+        ) { proxy, method, args ->
+            when (method.name) {
+                "equals" -> proxy === args?.getOrNull(0)
+                "hashCode" -> System.identityHashCode(proxy)
+                "toString" -> "Kolpona:${listenerClass.simpleName}"
+                else -> handler(method.name, args)
+            }
+        }
+    }
+
     private fun isAdReady(ad: Any?): Boolean {
         if (ad == null) return false
         return try {
@@ -275,25 +377,12 @@ class StartIoAdManager(
         }
     }
 
-    private fun adListener(onReady: (Boolean) -> Unit): Any {
-        val listenerClass = Class.forName("com.startapp.sdk.adsbase.adlisteners.AdEventListener")
-        return Proxy.newProxyInstance(
-            listenerClass.classLoader,
-            arrayOf(listenerClass)
-        ) { _, method, _ ->
-            when (method.name) {
-                "onReceiveAd" -> onReady(true)
-                "onFailedToReceiveAd" -> onReady(false)
-            }
-            null
-        }
-    }
-
-    private fun rewardedMode(startAppAdClass: Class<*>): Any? {
+    private fun adMode(startAppAdClass: Class<*>, hint: String): Any? {
         val modeClass = startAppAdClass.classes.find { it.simpleName == "AdMode" }
             ?: runCatching { Class.forName("com.startapp.sdk.adsbase.StartAppAd\$AdMode") }.getOrNull()
             ?: return null
-        return modeClass.enumConstants?.find { (it as Enum<*>).name.contains("REWARDED") }
+        val constants = modeClass.enumConstants ?: return null
+        return constants.find { (it as Enum<*>).name.contains(hint, ignoreCase = true) }
     }
 
     private fun firstClass(vararg names: String): Class<*>? {

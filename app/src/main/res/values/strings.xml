@@ -27,6 +27,12 @@
     <string name="chat_suggest_3">Cute anime girl in a sunflower field</string>
     <string name="chat_suggest_4">Cozy cabin in snowy mountains, warm light</string>
     <string name="send">Send</string>
+    <string name="tab_category">Category</string>
+    <string name="tab_ratio">Ratio</string>
+    <string name="voice_input">Voice message</string>
+    <string name="voice_prompt">Describe the image you want</string>
+    <string name="voice_unavailable">Voice input is not available on this device.</string>
+    <string name="ad_loading">Loading ad…</string>
     <string name="prompt_hint">Describe the image you want…</string>
     <string name="prompt_label">Prompt</string>
     <string name="style_label">Style</string>

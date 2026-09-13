@@ -17,7 +17,7 @@ object MediaPayload {
 
     fun looksLikeVideo(bytes: ByteArray): Boolean {
         if (bytes.size < 12) return false
-        val limit = minOf(32, bytes.size - 4)
+        val limit = minOf(512, bytes.size - 4)
         for (i in 0 until limit) {
             if (bytes[i] == 'f'.code.toByte() &&
                 bytes.getOrNull(i + 1) == 't'.code.toByte() &&
@@ -58,7 +58,7 @@ object MediaPayload {
     }
 
     private fun urlFromJson(json: JSONObject): String? {
-        listOf("url", "video_url", "image_url", "output", "result", "file", "uri").forEach { key ->
+        listOf("url", "video_url", "image_url", "output", "result", "file", "uri", "video", "image").forEach { key ->
             json.optString(key).takeIf { it.startsWith("http") }?.let { return it }
         }
         json.optJSONObject("data")?.let { child -> urlFromJson(child)?.let { return it } }

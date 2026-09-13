@@ -53,11 +53,13 @@ fun LegalScaffold(
 fun PrivacyPolicyScreen(onBack: () -> Unit) {
     LegalScaffold(title = stringResource(R.string.privacy_policy), onBack = onBack) {
         Text(
-            text = "Kolpona generates images from the text you provide. Prompts and images are stored on your device. " +
-                "Image generation requests are sent to the Pollinations AI service so the picture can be created. " +
+            text = "Kolpona generates images and videos from the text you provide. Prompts and media are stored on your device. " +
+                "Generation requests are sent to Pollinations and Hugging Face so the result can be created. " +
                 "We do not sell your personal information.\n\n" +
+                "Account sign-in uses Firebase Authentication. Your name, email, and Google account identifiers are processed " +
+                "by Google Firebase so you can create and use a Kolpona account.\n\n" +
                 "Optional rewarded videos are provided by Start.io. Their SDK may collect device advertising identifiers " +
-                "to show ads. Credits and settings stay on this device unless you later enable a backend account.\n\n" +
+                "to show ads. Credits and settings stay on this device.\n\n" +
                 "You can clear local history at any time from Settings. Uninstalling the app removes locally stored images " +
                 "and credit data.",
             style = MaterialTheme.typography.bodyLarge,

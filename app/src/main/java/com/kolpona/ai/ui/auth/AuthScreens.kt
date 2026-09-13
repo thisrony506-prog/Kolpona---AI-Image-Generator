@@ -6,6 +6,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -28,10 +29,13 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Email
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -83,7 +87,7 @@ fun LoginScreen(
     onSignedIn: () -> Unit
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    GoogleAuthHost(viewModel, state.signedIn, onSignedIn) { google ->
+    GoogleAuthHost(viewModel, state.signedIn, onSignedIn, requirePolicy = false) { google ->
         AuthScaffold(
             title = stringResource(R.string.auth_login_title),
             subtitle = stringResource(R.string.auth_login_subtitle)
@@ -119,16 +123,20 @@ fun LoginScreen(
 fun RegisterScreen(
     viewModel: AuthViewModel,
     onHaveAccount: () -> Unit,
+    onPrivacy: () -> Unit,
+    onTerms: () -> Unit,
     onSignedIn: () -> Unit
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    GoogleAuthHost(viewModel, state.signedIn, onSignedIn) { google ->
+    GoogleAuthHost(viewModel, state.signedIn, onSignedIn, requirePolicy = true) { google ->
         AuthScaffold(
             title = stringResource(R.string.auth_register_title),
             subtitle = stringResource(R.string.auth_register_subtitle)
         ) {
             AuthGoogleButton(enabled = !state.loading, onClick = google)
             AuthOrDivider()
+            AuthNameField(value = state.name, onChange = viewModel::onName)
+            Spacer(Modifier.height(12.dp))
             AuthFields(
                 email = state.email,
                 password = state.password,
@@ -139,11 +147,20 @@ fun RegisterScreen(
                 passwordIme = ImeAction.Next,
                 onDone = viewModel::register
             )
+            Spacer(Modifier.height(8.dp))
+            PolicyRow(
+                accepted = state.acceptedPolicy,
+                enabled = !state.loading,
+                onAccepted = viewModel::onPolicy,
+                onPrivacy = onPrivacy,
+                onTerms = onTerms
+            )
             AuthStatus(state)
             Spacer(Modifier.height(16.dp))
-            AuthPrimaryButton(
-                text = stringResource(R.string.auth_register),
+            AuthSignUpButton(
+                text = stringResource(R.string.auth_sign_up),
                 loading = state.loading,
+                enabled = !state.loading,
                 onClick = viewModel::register
             )
             TextButton(onClick = onHaveAccount, enabled = !state.loading) {
@@ -182,6 +199,7 @@ private fun GoogleAuthHost(
     viewModel: AuthViewModel,
     signedIn: Boolean,
     onSignedIn: () -> Unit,
+    requirePolicy: Boolean,
     content: @Composable (onGoogle: () -> Unit) -> Unit
 ) {
     val activity = LocalContext.current as Activity
@@ -194,9 +212,7 @@ private fun GoogleAuthHost(
         if (signedIn) onSignedIn()
     }
     content {
-        viewModel.signInWithGoogle(activity) { intent ->
-            googleLauncher.launch(intent)
-        }
+        viewModel.signInWithGoogle(activity, { intent -> googleLauncher.launch(intent) }, requirePolicy)
     }
 }
 
@@ -304,6 +320,114 @@ private fun AuthFields(
             ime = ImeAction.Done,
             onDone = onDone
         )
+    }
+}
+
+@Composable
+private fun AuthNameField(
+    value: String,
+    onChange: (String) -> Unit
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onChange,
+        modifier = Modifier.fillMaxWidth(),
+        label = { Text(stringResource(R.string.auth_name)) },
+        leadingIcon = { Icon(Icons.Outlined.Person, contentDescription = null, tint = ElectricBlue) },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(
+            keyboardType = KeyboardType.Text,
+            imeAction = ImeAction.Next
+        ),
+        colors = authFieldColors(),
+        shape = RoundedCornerShape(16.dp)
+    )
+}
+
+@Composable
+private fun PolicyRow(
+    accepted: Boolean,
+    enabled: Boolean,
+    onAccepted: (Boolean) -> Unit,
+    onPrivacy: () -> Unit,
+    onTerms: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.Top
+    ) {
+        Checkbox(
+            checked = accepted,
+            onCheckedChange = onAccepted,
+            enabled = enabled,
+            colors = CheckboxDefaults.colors(
+                checkedColor = ElectricBlue,
+                uncheckedColor = GlassStroke,
+                checkmarkColor = Color.White
+            )
+        )
+        Column(modifier = Modifier.padding(top = 12.dp)) {
+            Text(
+                text = stringResource(R.string.auth_policy),
+                color = SoftWhite,
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = stringResource(R.string.privacy_policy),
+                    color = ElectricBlue,
+                    fontWeight = FontWeight.SemiBold,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.clickable(enabled = enabled, onClick = onPrivacy)
+                )
+                Text(
+                    text = "  ·  ",
+                    color = MutedGray,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Text(
+                    text = stringResource(R.string.terms_of_use),
+                    color = ElectricBlue,
+                    fontWeight = FontWeight.SemiBold,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.clickable(enabled = enabled, onClick = onTerms)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AuthSignUpButton(
+    text: String,
+    loading: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    val brush = Brush.horizontalGradient(listOf(ElectricBlue, NeonViolet, PinkAccent))
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(56.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(brush)
+            .clickable(enabled = enabled && !loading, onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        if (loading) {
+            CircularProgressIndicator(
+                color = Color.White,
+                strokeWidth = 2.dp,
+                modifier = Modifier.size(22.dp)
+            )
+        } else {
+            Text(
+                text = text,
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = 17.sp
+            )
+        }
     }
 }
 

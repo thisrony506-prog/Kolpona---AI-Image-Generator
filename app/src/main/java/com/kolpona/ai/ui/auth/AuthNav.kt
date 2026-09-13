@@ -9,11 +9,15 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.kolpona.ai.KolponaApp
 import com.kolpona.ai.ui.KolponaViewModelFactory
+import com.kolpona.ai.ui.legal.PrivacyPolicyScreen
+import com.kolpona.ai.ui.legal.TermsOfUseScreen
 
 private object AuthRoutes {
     const val LOGIN = "login"
     const val REGISTER = "register"
     const val FORGOT = "forgot"
+    const val PRIVACY = "privacy"
+    const val TERMS = "terms"
 }
 
 @Composable
@@ -52,6 +56,8 @@ fun AuthNav(
                     viewModel.clearMessages()
                     nav.popBackStack()
                 },
+                onPrivacy = { nav.navigate(AuthRoutes.PRIVACY) },
+                onTerms = { nav.navigate(AuthRoutes.TERMS) },
                 onSignedIn = onSignedIn
             )
         }
@@ -63,6 +69,12 @@ fun AuthNav(
                     nav.popBackStack()
                 }
             )
+        }
+        composable(AuthRoutes.PRIVACY) {
+            PrivacyPolicyScreen(onBack = { nav.popBackStack() })
+        }
+        composable(AuthRoutes.TERMS) {
+            TermsOfUseScreen(onBack = { nav.popBackStack() })
         }
     }
 }

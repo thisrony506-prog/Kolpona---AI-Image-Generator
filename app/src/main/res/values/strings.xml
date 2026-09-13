@@ -228,11 +228,14 @@
     <string name="auth_register_subtitle">Join Kolpona with your email or Google account.</string>
     <string name="auth_forgot_title">Reset password</string>
     <string name="auth_forgot_subtitle">We\'ll send a reset link to your email.</string>
-    <string name="auth_email">Email</string>
+    <string name="auth_name">Name</string>
+    <string name="auth_email">Email address</string>
     <string name="auth_password">Password</string>
     <string name="auth_confirm_password">Confirm password</string>
+    <string name="auth_policy">I agree to the Privacy Policy and Terms of Use.</string>
     <string name="auth_login">Log in</string>
     <string name="auth_register">Create account</string>
+    <string name="auth_sign_up">Sign up</string>
     <string name="auth_google">Continue with Google</string>
     <string name="auth_or">or</string>
     <string name="auth_forgot">Forgot password?</string>
@@ -247,6 +250,8 @@
     <string name="auth_logout_body">You\'ll need to sign in again to use Kolpona.</string>
     <string name="auth_signed_in">Signed in</string>
     <string name="settings_account">Account</string>
+    <string name="auth_error_name_required">Enter your name.</string>
+    <string name="auth_error_policy">Accept the Privacy Policy and Terms of Use to continue.</string>
     <string name="auth_error_email_required">Enter your email address.</string>
     <string name="auth_error_email_invalid">Enter a valid email address.</string>
     <string name="auth_error_password_required">Enter your password.</string>

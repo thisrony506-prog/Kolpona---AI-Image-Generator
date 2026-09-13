@@ -184,7 +184,7 @@ class GenerationRouter(
 
     private fun qualityOk(bytes: ByteArray, kind: MediaKind): Boolean =
         if (kind == MediaKind.VIDEO) {
-            bytes.size >= 12_000 && MediaPayload.looksLikeVideo(bytes)
+            bytes.size >= 4_000 && MediaPayload.looksLikeVideo(bytes)
         } else {
             bytes.size >= 8_000
         }

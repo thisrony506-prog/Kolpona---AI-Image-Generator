@@ -28,6 +28,7 @@ import com.google.firebase.auth.FirebaseAuthUserCollisionException
 import com.google.firebase.auth.FirebaseAuthWeakPasswordException
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
+import com.google.firebase.auth.UserProfileChangeRequest
 import com.kolpona.ai.R
 import com.kolpona.ai.utils.NetworkMonitor
 import kotlinx.coroutines.Dispatchers
@@ -88,14 +89,26 @@ class AuthRepository(
         }
     }
 
-    suspend fun register(email: String, password: String, confirm: String): AuthOutcome {
+    suspend fun register(
+        name: String,
+        email: String,
+        password: String,
+        confirm: String,
+        acceptedPolicy: Boolean
+    ): AuthOutcome {
         val auth = requireAuth() ?: return AuthOutcome.Failure(R.string.auth_error_not_configured)
+        validateName(name)?.let { return it }
         validateEmail(email)?.let { return it }
         validateNewPassword(password)?.let { return it }
         if (password != confirm) return AuthOutcome.Failure(R.string.auth_error_password_mismatch)
+        if (!acceptedPolicy) return AuthOutcome.Failure(R.string.auth_error_policy)
         if (!network.isOnline()) return AuthOutcome.Failure(R.string.error_network)
         return runAuth {
             auth.createUserWithEmailAndPassword(email.trim(), password).await()
+            val profile = UserProfileChangeRequest.Builder()
+                .setDisplayName(name.trim())
+                .build()
+            runCatching { auth.currentUser?.updateProfile(profile)?.await() }
             runCatching { auth.currentUser?.sendEmailVerification()?.await() }
             AuthOutcome.Success
         }
@@ -109,6 +122,19 @@ class AuthRepository(
             auth.sendPasswordResetEmail(email.trim()).await()
             AuthOutcome.Message(R.string.auth_reset_sent)
         }
+    }
+
+    suspend fun prepareGoogleSignIn(activity: Activity): Intent? {
+        val webClientId = webClientId()
+        if (webClientId.isBlank()) return null
+        val options = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+            .requestIdToken(webClientId)
+            .requestEmail()
+            .requestProfile()
+            .build()
+        val client = GoogleSignIn.getClient(activity, options)
+        runCatching { client.signOut().await() }
+        return client.signInIntent
     }
 
     suspend fun signInWithGoogle(activity: Activity): AuthOutcome {
@@ -160,6 +186,7 @@ class AuthRepository(
         val options = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
             .requestIdToken(webClientId)
             .requestEmail()
+            .requestProfile()
             .build()
         return GoogleSignIn.getClient(activity, options).signInIntent
     }
@@ -228,6 +255,12 @@ class AuthRepository(
     }
 
     private fun requireAuth(): FirebaseAuth? = firebaseAuth
+
+    private fun validateName(name: String): AuthOutcome.Failure? {
+        val trimmed = name.trim()
+        if (trimmed.length < 2) return AuthOutcome.Failure(R.string.auth_error_name_required)
+        return null
+    }
 
     private fun validateEmail(email: String): AuthOutcome.Failure? {
         val trimmed = email.trim()

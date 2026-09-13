@@ -93,6 +93,7 @@ class HuggingFaceApiService(
             .post(bodyJson.toRequestBody(media))
             .header("Accept", if (expectVideo) "video/mp4,application/json" else "image/jpeg,image/png,application/json")
             .header("Content-Type", "application/json")
+            .header("Authorization", "Bearer ${HuggingFaceConfig.apiKey}")
             .header("User-Agent", HuggingFaceConfig.USER_AGENT)
             .header("X-Wait-For-Model", "true")
             .build()
@@ -193,6 +194,7 @@ class HuggingFaceApiService(
         val request = Request.Builder()
             .url(url)
             .get()
+            .header("Authorization", "Bearer ${HuggingFaceConfig.apiKey}")
             .header("User-Agent", HuggingFaceConfig.USER_AGENT)
             .build()
         client.newCall(request).execute().use { response ->

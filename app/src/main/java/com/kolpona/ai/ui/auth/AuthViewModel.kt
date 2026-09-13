@@ -15,9 +15,11 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 data class AuthUiState(
+    val name: String = "",
     val email: String = "",
     val password: String = "",
     val confirmPassword: String = "",
+    val acceptedPolicy: Boolean = false,
     val loading: Boolean = false,
     val errorRes: Int? = null,
     val infoRes: Int? = null,
@@ -31,6 +33,10 @@ class AuthViewModel(
     private val _state = MutableStateFlow(AuthUiState(signedIn = auth.isSignedIn()))
     val state: StateFlow<AuthUiState> = _state.asStateFlow()
 
+    fun onName(value: String) {
+        _state.update { it.copy(name = value, errorRes = null, infoRes = null) }
+    }
+
     fun onEmail(value: String) {
         _state.update { it.copy(email = value, errorRes = null, infoRes = null) }
     }
@@ -43,38 +49,37 @@ class AuthViewModel(
         _state.update { it.copy(confirmPassword = value, errorRes = null, infoRes = null) }
     }
 
+    fun onPolicy(accepted: Boolean) {
+        _state.update { it.copy(acceptedPolicy = accepted, errorRes = null, infoRes = null) }
+    }
+
     fun signIn() = launchAuth {
         auth.signIn(_state.value.email, _state.value.password)
     }
 
     fun register() = launchAuth {
-        auth.register(_state.value.email, _state.value.password, _state.value.confirmPassword)
+        val s = _state.value
+        auth.register(s.name, s.email, s.password, s.confirmPassword, s.acceptedPolicy)
     }
 
     fun sendReset() = launchAuth {
         auth.sendPasswordReset(_state.value.email)
     }
 
-    fun signInWithGoogle(activity: Activity, launchLegacy: (Intent) -> Unit) = launchAuth {
-        when (val result = auth.signInWithGoogle(activity)) {
-            AuthOutcome.Success -> result
-            is AuthOutcome.Failure -> {
-                if (result.resId == R.string.auth_error_google_cancelled ||
-                    result.resId == R.string.auth_error_not_configured ||
-                    result.resId == R.string.error_network
-                ) {
-                    result
-                } else {
-                    val intent = auth.googleSignInIntent(activity)
-                    if (intent != null) {
-                        launchLegacy(intent)
-                        AuthOutcome.ContinueGoogle
-                    } else {
-                        result
-                    }
-                }
-            }
-            else -> result
+    fun signInWithGoogle(
+        activity: Activity,
+        launchLegacy: (Intent) -> Unit,
+        requirePolicy: Boolean = false
+    ) = launchAuth {
+        if (requirePolicy && !_state.value.acceptedPolicy) {
+            return@launchAuth AuthOutcome.Failure(R.string.auth_error_policy)
+        }
+        val intent = auth.prepareGoogleSignIn(activity)
+        if (intent != null) {
+            launchLegacy(intent)
+            AuthOutcome.ContinueGoogle
+        } else {
+            auth.signInWithGoogle(activity)
         }
     }
 

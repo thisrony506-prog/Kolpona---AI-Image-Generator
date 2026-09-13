@@ -117,6 +117,30 @@ class PollinationsApiService(
         return listOf(
             buildUrl(
                 base = PollinationsConfig.API_BASE_URL,
+                path = PollinationsConfig.IMAGE_PATH,
+                encodedPrompt = encodedPrompt,
+                model = model,
+                width = width,
+                height = height,
+                seed = null,
+                key = key,
+                extra = mapOf("duration" to "5", "aspectRatio" to ratio, "format" to "mp4"),
+                includeSize = true
+            ),
+            buildUrl(
+                base = PollinationsConfig.API_BASE_URL,
+                path = PollinationsConfig.IMAGE_PATH,
+                encodedPrompt = encodedPrompt,
+                model = model,
+                width = width,
+                height = height,
+                seed = null,
+                key = key,
+                extra = mapOf("duration" to "5", "format" to "mp4"),
+                includeSize = false
+            ),
+            buildUrl(
+                base = PollinationsConfig.API_BASE_URL,
                 path = PollinationsConfig.VIDEO_PATH,
                 encodedPrompt = encodedPrompt,
                 model = model,
@@ -124,7 +148,7 @@ class PollinationsApiService(
                 height = height,
                 seed = null,
                 key = key,
-                extra = mapOf("duration" to "5", "aspect" to ratio),
+                extra = mapOf("duration" to "5", "aspectRatio" to ratio, "format" to "mp4"),
                 includeSize = true
             ),
             buildUrl(
@@ -138,6 +162,18 @@ class PollinationsApiService(
                 key = key,
                 extra = mapOf("duration" to "5"),
                 includeSize = false
+            ),
+            buildUrl(
+                base = PollinationsConfig.FALLBACK_BASE_URL,
+                path = PollinationsConfig.FALLBACK_PATH,
+                encodedPrompt = encodedPrompt,
+                model = model,
+                width = width,
+                height = height,
+                seed = null,
+                key = key,
+                extra = mapOf("duration" to "5", "aspectRatio" to ratio),
+                includeSize = true
             ),
             buildUrl(
                 base = PollinationsConfig.VIDEO_FALLBACK_BASE_URL,
@@ -212,12 +248,16 @@ class PollinationsApiService(
         } else {
             "image/jpeg,image/png,image/webp,image/*,application/json"
         }
-        val request = Request.Builder()
+        val requestBuilder = Request.Builder()
             .url(url)
             .get()
             .header("Accept", accept)
             .header("User-Agent", PollinationsConfig.USER_AGENT)
-            .build()
+        val key = PollinationsConfig.apiKey
+        if (key.isNotBlank()) {
+            requestBuilder.header("Authorization", "Bearer $key")
+        }
+        val request = requestBuilder.build()
         try {
             http.newCall(request).execute().use { response ->
                 when (response.code) {

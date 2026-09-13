@@ -18,7 +18,7 @@ object PollinationsConfig {
     const val DEFAULT_MODEL = "flux"
     const val FAST_MODEL = "turbo"
     const val VIDEO_MODEL = "seedance"
-    val VIDEO_MODELS: List<String> = listOf("seedance", "veo", "wan")
+    val VIDEO_MODELS: List<String> = listOf("seedance", "veo", "wan", "wan-fast")
     const val USER_AGENT = "Kolpona/1.6.1 (Android)"
 
     val apiKey: String

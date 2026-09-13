@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "727257597579",
+    "project_id": "kolpona-ai",
+    "storage_bucket": "kolpona-ai.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:727257597579:android:e7e10eb68847c08b3d768e",
+        "android_client_info": {
+          "package_name": "com.kolpona.ai"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "727257597579-f0i4a6h72svh45vuctvrphniuc7rcp36.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.kolpona.ai",
+            "certificate_hash": "a258e256194493a927145b4bc3d5fbfe23839251"
+          }
+        },
+        {
+          "client_id": "727257597579-c89ss6i0iv81jq0095t6n11fi4g0812k.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC2-WcNW2E_jqtGDssjpGoa6xuTIZuRQnc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "727257597579-c89ss6i0iv81jq0095t6n11fi4g0812k.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

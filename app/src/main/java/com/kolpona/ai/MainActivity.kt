@@ -91,6 +91,8 @@ class MainActivity : ComponentActivity() {
                 onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
             }
 
+            BackHandler { moveTaskToBack(true) }
+
             KolponaTheme(themeMode = themeMode) {
                 when {
                     updateState is UpdateUiState.Required -> {

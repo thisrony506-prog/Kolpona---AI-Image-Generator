@@ -59,7 +59,7 @@ data class ImageModelOption(
 
 object ImageModels {
     val available: List<ImageModelOption> = listOf(
-        ImageModelOption(id = com.kolpona.ai.data.api.PollinationsConfig.DEFAULT_MODEL, displayName = "Flux")
+        ImageModelOption(id = "flux-1-dev", displayName = "Flux")
     )
 
     fun default(): ImageModelOption = available.first()

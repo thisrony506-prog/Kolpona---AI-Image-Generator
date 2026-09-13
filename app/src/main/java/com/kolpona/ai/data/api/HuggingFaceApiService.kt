@@ -10,30 +10,37 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
+import java.util.concurrent.TimeUnit
 
 class HuggingFaceApiService(
     private val client: OkHttpClient
 ) {
     val isConfigured: Boolean get() = HuggingFaceConfig.isConfigured
 
+    private val videoClient: OkHttpClient = client.newBuilder()
+        .connectTimeout(45, TimeUnit.SECONDS)
+        .readTimeout(240, TimeUnit.SECONDS)
+        .writeTimeout(45, TimeUnit.SECONDS)
+        .callTimeout(260, TimeUnit.SECONDS)
+        .build()
+
     suspend fun generateImage(
         prompt: String,
         width: Int,
         height: Int,
         negativePrompt: String? = null,
-        model: String = HuggingFaceConfig.IMAGE_MODEL_PRIMARY
+        model: String = HuggingFaceConfig.IMAGE_MODEL_DEV
     ): ByteArray = withContext(Dispatchers.IO) {
         if (!isConfigured) throw GenerationException(GenerationError.API)
         val (w, h) = fit(width, height)
-        val supportsNegative = model.contains("sdxl", ignoreCase = true)
         postModel(
             model = model,
             prompt = prompt,
             expectVideo = false,
             width = w,
             height = h,
-            negativePrompt = negativePrompt.takeIf { supportsNegative },
-            steps = if (model.contains("FLUX.1-dev", ignoreCase = true)) 28 else 4
+            negativePrompt = null,
+            steps = 28
         )
     }
 
@@ -66,8 +73,8 @@ class HuggingFaceApiService(
         val simple = buildInputJson(prompt, null, null, null, null)
         val media = "application/json; charset=utf-8".toMediaType()
         val urls = listOf(
-            "${HuggingFaceConfig.ROUTER_BASE}/$model",
-            "${HuggingFaceConfig.INFERENCE_BASE}/$model"
+            "${HuggingFaceConfig.INFERENCE_BASE}/$model",
+            "${HuggingFaceConfig.ROUTER_BASE}/$model"
         )
         var last: GenerationException? = null
         for (url in urls) {
@@ -79,7 +86,9 @@ class HuggingFaceApiService(
                 }
             }
         }
-        throw last ?: GenerationException(GenerationError.API)
+        throw last ?: GenerationException(
+            if (expectVideo) GenerationError.VIDEO_UNAVAILABLE else GenerationError.API
+        )
     }
 
     private fun execute(
@@ -88,6 +97,7 @@ class HuggingFaceApiService(
         media: okhttp3.MediaType,
         expectVideo: Boolean
     ): ByteArray {
+        val http = if (expectVideo) videoClient else client
         val request = Request.Builder()
             .url(url)
             .post(bodyJson.toRequestBody(media))
@@ -98,13 +108,17 @@ class HuggingFaceApiService(
             .header("X-Wait-For-Model", "true")
             .build()
         try {
-            client.newCall(request).execute().use { response ->
+            http.newCall(request).execute().use { response ->
                 val bytes = response.body?.bytes() ?: ByteArray(0)
                 when (response.code) {
                     in 200..299 -> {
                         if (expectVideo && MediaPayload.looksLikeVideo(bytes)) return bytes
                         if (!expectVideo && MediaPayload.looksLikeImage(bytes)) return bytes
                         val asText = runCatching { bytes.decodeToString() }.getOrNull().orEmpty()
+                        MediaPayload.decodeEmbeddedImage(asText)?.let { decoded ->
+                            if (expectVideo && MediaPayload.looksLikeVideo(decoded)) return decoded
+                            if (!expectVideo && MediaPayload.looksLikeImage(decoded)) return decoded
+                        }
                         val nested = MediaPayload.extractHttpUrl(asText)
                         if (!nested.isNullOrBlank()) {
                             return executeGet(nested, expectVideo)
@@ -191,13 +205,14 @@ class HuggingFaceApiService(
     }
 
     private fun executeGet(url: String, expectVideo: Boolean): ByteArray {
+        val http = if (expectVideo) videoClient else client
         val request = Request.Builder()
             .url(url)
             .get()
             .header("Authorization", "Bearer ${HuggingFaceConfig.apiKey}")
             .header("User-Agent", HuggingFaceConfig.USER_AGENT)
             .build()
-        client.newCall(request).execute().use { response ->
+        http.newCall(request).execute().use { response ->
             val bytes = response.body?.bytes() ?: ByteArray(0)
             if (!response.isSuccessful) {
                 throw GenerationException(

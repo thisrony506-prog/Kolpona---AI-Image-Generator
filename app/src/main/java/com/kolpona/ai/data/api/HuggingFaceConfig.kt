@@ -11,16 +11,14 @@ object HuggingFaceConfig {
     const val ROUTER_BASE = "https://router.huggingface.co/hf-inference/models"
     const val INFERENCE_BASE = "https://api-inference.huggingface.co/models"
 
-    const val IMAGE_MODEL_PRIMARY = "black-forest-labs/FLUX.1-schnell"
     const val IMAGE_MODEL_DEV = "black-forest-labs/FLUX.1-dev"
-    const val IMAGE_MODEL_FALLBACK = "stabilityai/sdxl-turbo"
-    const val VIDEO_MODEL = "Lightricks/LTX-Video"
+    const val VIDEO_MODEL = "THUDM/CogVideoX-5b"
     val VIDEO_MODELS: List<String> = listOf(
+        "THUDM/CogVideoX-5b",
         "Lightricks/LTX-Video",
-        "Wan-AI/Wan2.1-T2V-1.3B",
-        "ali-vilab/text-to-video-ms-1.7b"
+        "Wan-AI/Wan2.1-T2V-1.3B"
     )
-    const val USER_AGENT = "Kolpona/1.6.1 (Android)"
+    const val USER_AGENT = "Kolpona/1.10.0 (Android)"
 
     val apiKey: String
         get() = BuildConfig.HUGGINGFACE_API_KEY

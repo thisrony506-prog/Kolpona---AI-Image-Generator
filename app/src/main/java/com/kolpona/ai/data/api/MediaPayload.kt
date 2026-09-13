@@ -1,5 +1,6 @@
 package com.kolpona.ai.data.api
 
+import android.util.Base64
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -35,6 +36,13 @@ object MediaPayload {
         return webm || avi
     }
 
+    fun decodeEmbeddedImage(text: String): ByteArray? {
+        val trimmed = text.trim()
+        if (trimmed.isEmpty()) return null
+        runCatching { base64FromJson(JSONObject(trimmed)) }.getOrNull()?.let { return it }
+        return decodeBase64(trimmed)
+    }
+
     fun extractHttpUrl(text: String): String? {
         val trimmed = text.trim().trim('"')
         if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
@@ -52,9 +60,38 @@ object MediaPayload {
                 lower.contains(".mp4") ||
                     lower.contains(".webm") ||
                     lower.contains("video") ||
-                    lower.contains("pollinations") ||
-                    lower.contains("huggingface")
+                    lower.contains("huggingface") ||
+                    lower.contains("cloudflare")
             }
+    }
+
+    private fun base64FromJson(json: JSONObject): ByteArray? {
+        listOf("image", "b64_json", "base64", "video").forEach { key ->
+            json.optString(key).takeIf { it.length > 100 && !it.startsWith("http") }?.let { raw ->
+                decodeBase64(raw)?.let { return it }
+            }
+        }
+        json.optJSONObject("result")?.let { child -> base64FromJson(child)?.let { return it } }
+        json.optJSONObject("data")?.let { child -> base64FromJson(child)?.let { return it } }
+        json.optJSONArray("data")?.let { array ->
+            for (i in 0 until array.length()) {
+                val child = array.optJSONObject(i) ?: continue
+                base64FromJson(child)?.let { return it }
+            }
+        }
+        return null
+    }
+
+    private fun decodeBase64(value: String): ByteArray? {
+        var payload = value.trim().trim('"')
+        val marker = payload.indexOf("base64,")
+        if (marker >= 0) payload = payload.substring(marker + 7)
+        payload = payload.replace("\\s".toRegex(), "")
+        if (payload.length < 100) return null
+        val decoded = runCatching {
+            Base64.decode(payload, Base64.DEFAULT)
+        }.getOrNull() ?: return null
+        return decoded.takeIf { looksLikeImage(it) || looksLikeVideo(it) }
     }
 
     private fun urlFromJson(json: JSONObject): String? {

@@ -4,9 +4,9 @@ import android.app.Application
 import com.kolpona.ai.ads.StartIoAdManager
 import com.kolpona.ai.data.auth.AuthRepository
 import com.kolpona.ai.data.api.AuthInterceptor
+import com.kolpona.ai.data.api.CloudflareApiService
 import com.kolpona.ai.data.api.GenerationRouter
 import com.kolpona.ai.data.api.HuggingFaceApiService
-import com.kolpona.ai.data.api.PollinationsApiService
 import com.kolpona.ai.data.api.TextNormalizeService
 import com.kolpona.ai.data.database.KolponaDatabase
 import com.kolpona.ai.data.prefs.AppPreferences
@@ -45,10 +45,10 @@ class AppContainer(app: Application) {
         .addInterceptor(AuthInterceptor())
         .build()
 
-    val pollinationsApi: PollinationsApiService = PollinationsApiService(okHttpClient)
     val huggingFaceApi: HuggingFaceApiService = HuggingFaceApiService(okHttpClient)
-    val textNormalize: TextNormalizeService = TextNormalizeService(okHttpClient)
-    val generationRouter: GenerationRouter = GenerationRouter(huggingFaceApi, pollinationsApi)
+    val cloudflareApi: CloudflareApiService = CloudflareApiService(okHttpClient)
+    val textNormalize: TextNormalizeService = TextNormalizeService()
+    val generationRouter: GenerationRouter = GenerationRouter(huggingFaceApi, cloudflareApi)
 
     val generateImageUseCase: GenerateImageUseCase = GenerateImageUseCase(
         router = generationRouter,

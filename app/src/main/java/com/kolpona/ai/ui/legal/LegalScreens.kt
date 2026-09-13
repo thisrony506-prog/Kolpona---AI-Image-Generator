@@ -54,7 +54,7 @@ fun PrivacyPolicyScreen(onBack: () -> Unit) {
     LegalScaffold(title = stringResource(R.string.privacy_policy), onBack = onBack) {
         Text(
             text = "Kolpona generates images and videos from the text you provide. Prompts and media are stored on your device. " +
-                "Generation requests are sent to Pollinations and Hugging Face so the result can be created. " +
+                "Generation requests are sent to Hugging Face and Cloudflare Workers AI so the result can be created. " +
                 "We do not sell your personal information.\n\n" +
                 "Account sign-in uses Firebase Authentication. Your name, email, and Google account identifiers are processed " +
                 "by Google Firebase so you can create and use a Kolpona account.\n\n" +
@@ -100,7 +100,7 @@ fun AboutScreen(onBack: () -> Unit) {
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Text(
-            text = "Images are generated with Pollinations. Optional extra credits come from Start.io rewarded videos.",
+            text = "Images are generated with Hugging Face FLUX.1-dev and Cloudflare FLUX.1-schnell. Optional extra credits come from Start.io rewarded videos.",
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 16.dp)

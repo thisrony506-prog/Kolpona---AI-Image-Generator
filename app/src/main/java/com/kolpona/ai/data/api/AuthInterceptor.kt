@@ -9,10 +9,13 @@ import okhttp3.Response
 class AuthInterceptor : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val original = chain.request()
+        if (original.header("Authorization") != null) {
+            return chain.proceed(original)
+        }
         val host = original.url.host.lowercase()
         val token = when {
             host.contains("huggingface.co") -> HuggingFaceConfig.apiKey
-            host.contains("pollinations.ai") -> PollinationsConfig.apiKey
+            host.contains("cloudflare.com") -> CloudflareConfig.apiToken
             else -> ""
         }
         val request = if (token.isNotBlank()) {

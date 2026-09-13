@@ -2,7 +2,7 @@
 
 Turn Your Imagination Into Images.
 
-Native Android app (Kotlin, Jetpack Compose, Material 3) that generates images with Pollinations AI, manages 100 daily credits locally, and offers optional Start.io rewarded videos for +25 credits.
+Native Android app (Kotlin, Jetpack Compose, Material 3) that races Hugging Face FLUX.1-dev and Cloudflare FLUX.1-schnell, keeps 100 daily credits on-device, and offers optional Start.io rewarded videos for +25 credits.
 
 ## Requirements
 
@@ -15,15 +15,32 @@ Native Android app (Kotlin, Jetpack Compose, Material 3) that generates images w
 
 1. Clone this repository.
 2. Copy `local.properties.example` to `local.properties` (Android Studio also writes `sdk.dir` automatically).
-3. Add your Pollinations key (optional for some public models, required for authenticated `gen.pollinations.ai` usage):
+3. Add generation credentials (gitignored):
 
 ```
-POLLINATIONS_API_KEY=your_key_here
+HUGGINGFACE_API_KEY=hf_...
+CLOUDFLARE_ACCOUNT_ID=...
+CLOUDFLARE_API_TOKEN=...
 ```
 
 4. Open the project in Android Studio and run the **debug** build.
 
 Debug builds enable Start.io test ads (`IS_AD_TEST_MODE = true`). Release builds set that flag to `false`.
+
+## Generation architecture
+
+```
+User prompt
+   |
+   +--> Hugging Face FLUX.1-dev
+   +--> Cloudflare FLUX.1-schnell
+   |
+   First valid image wins
+```
+
+Video uses Hugging Face (`THUDM/CogVideoX-5b`, then LTX / Wan fallback). Fake media is never returned.
+
+Do not put keys in Kotlin source, UI, logs, Room, or Git.
 
 ## Daily credits
 
@@ -38,9 +55,9 @@ Credits reset once per local calendar day to exactly 100. Extra credits from ads
 ## Project layout
 
 ```
-app/src/main/java/com/kolpona/app/
+app/src/main/java/com/kolpona/ai/
   ads/          Start.io rewarded video
-  data/api/     Pollinations client (isolated)
+  data/api/     Hugging Face + Cloudflare clients
   data/database Room history
   data/prefs    DataStore (credits, settings)
   data/repository
@@ -50,36 +67,30 @@ app/src/main/java/com/kolpona/app/
 
 ## Configuration cheat sheet
 
-### 1. Pollinations configuration
+### 1. Generation APIs
 
-- **Code:** `app/src/main/java/com/kolpona/app/data/api/PollinationsConfig.kt`
-  - `API_BASE_URL` = `https://gen.pollinations.ai`
-  - `DEFAULT_MODEL` = `flux`
-  - `apiKey` is read from `BuildConfig.POLLINATIONS_API_KEY` (never logged or shown)
-- **Service:** `app/src/main/java/com/kolpona/app/data/api/PollinationsApiService.kt`
+- Hugging Face: `HuggingFaceConfig` / `HuggingFaceApiService`
+- Cloudflare Workers AI: `CloudflareConfig` / `CloudflareApiService`
+- Router: `GenerationRouter` races the two image providers
 
 ### 2. Start.io App ID
 
-- **Code:** `app/src/main/java/com/kolpona/app/ads/AdsConfig.kt` (`APP_ID = "208407601"`)
+- **Code:** `app/src/main/java/com/kolpona/ai/ads/AdsConfig.kt` (`APP_ID = "208407601"`)
 - **Manifest meta-data:** `app/src/main/AndroidManifest.xml` (`com.startapp.sdk.APPLICATION_ID`)
 
-### 3. Replace the Pollinations API credential
+### 3. Credentials
 
-Do **not** put the key in Kotlin source, UI, logs, Room, or Git.
+1. Set keys in **`local.properties`** (gitignored), or
+2. Set GitHub Actions secrets `HUGGINGFACE_API_KEY`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`, or
+3. Export the same environment variables when assembling.
 
-1. Set `POLLINATIONS_API_KEY` in **`local.properties`** (gitignored), or
-2. Set the GitHub Actions secret **`POLLINATIONS_API_KEY`**, or
-3. Export the same environment variable when assembling.
-
-`app/build.gradle.kts` copies that value into `BuildConfig` at compile time.
-
-Before production, point the app at a backend proxy by replacing `PollinationsApiService` only. Screens do not touch the secret.
+`app/build.gradle.kts` copies those values into `BuildConfig` at compile time.
 
 ### 4. Change daily credits
 
 Edit `DAILY_INITIAL_CREDITS` in:
 
-`app/src/main/java/com/kolpona/app/domain/manager/CreditConfig.kt`
+`app/src/main/java/com/kolpona/ai/domain/manager/CreditConfig.kt`
 
 ### 5. Change image-generation cost
 
@@ -93,22 +104,17 @@ Edit `REWARDED_VIDEO_REWARD` in the same `CreditConfig.kt` file.
 
 Each CI build publishes a public `version.json` + APK on the GitHub Release tag `kolpona-release-apk`. The app checks that file on launch. If `versionCode` is higher, a blocking Update screen appears: no Skip / Later / Close. The APK downloads inside the app, then Android’s installer runs. Chat / History / Settings stay locked until the new version is installed.
 
-**Do not add a GitHub token (or any update secret) to the Android app.** The repository is public; a token inside the APK would leak. `GITHUB_TOKEN` is provided automatically to Actions for creating the release.
+**Do not add a GitHub token (or any update secret) to the Android app.**
 
 Existing CI secrets (generation only, not updates):
 
-- `POLLINATIONS_API_KEY`
 - `HUGGINGFACE_API_KEY`
+- `CLOUDFLARE_ACCOUNT_ID`
+- `CLOUDFLARE_API_TOKEN`
 
 ### 8. Build the Release APK with GitHub Actions
 
 Workflow: `.github/workflows/android.yml`
-
-It checks out the repo, sets up JDK 17 and the Android SDK, writes `local.properties`, runs `./gradlew assembleRelease`, and uploads:
-
-`app/build/outputs/apk/release/app-release.apk`
-
-Add repository secret `POLLINATIONS_API_KEY` if you want the key baked into CI artifacts. Release signing uses a production keystore when `RELEASE_STORE_FILE` (and related passwords) are provided; otherwise the debug keystore is used so CI still produces `app-release.apk`.
 
 Locally:
 
@@ -128,9 +134,9 @@ Never ship a production build with test ads enabled.
 ## Security
 
 - Secrets live in `local.properties` / CI secrets, not in Git.
-- Authorization is an OkHttp interceptor header. The key is never added to image URLs, Logcat, errors, or the database.
+- Authorization is an OkHttp interceptor header. Keys are never added to image URLs, Logcat, errors, or the database.
 - HTTPS only (`network_security_config`).
 
 ## License
 
-Use and modify for your product. Replace the temporary Pollinations development credential before a public release.
+Use and modify for your product. Rotate any credential that was pasted in chat before a public release.

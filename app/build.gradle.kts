@@ -33,8 +33,8 @@ android {
         applicationId = "com.kolpona.ai"
         minSdk = 24
         targetSdk = 34
-        versionCode = 20
-        versionName = "1.9.3"
+        versionCode = 21
+        versionName = "1.10.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -42,13 +42,18 @@ android {
         // Secrets injected from local.properties or CI env. Never commit real keys.
         buildConfigField(
             "String",
-            "POLLINATIONS_API_KEY",
-            "\"${escapeBuildConfig(secret("POLLINATIONS_API_KEY"))}\""
+            "HUGGINGFACE_API_KEY",
+            "\"${escapeBuildConfig(secret("HUGGINGFACE_API_KEY"))}\""
         )
         buildConfigField(
             "String",
-            "HUGGINGFACE_API_KEY",
-            "\"${escapeBuildConfig(secret("HUGGINGFACE_API_KEY"))}\""
+            "CLOUDFLARE_ACCOUNT_ID",
+            "\"${escapeBuildConfig(secret("CLOUDFLARE_ACCOUNT_ID"))}\""
+        )
+        buildConfigField(
+            "String",
+            "CLOUDFLARE_API_TOKEN",
+            "\"${escapeBuildConfig(secret("CLOUDFLARE_API_TOKEN"))}\""
         )
     }
 

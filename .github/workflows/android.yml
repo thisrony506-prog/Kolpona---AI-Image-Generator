@@ -47,8 +47,9 @@ jobs:
           sdk = os.environ.get("SDK_PATH") or os.environ.get("ANDROID_SDK_ROOT") or os.environ.get("ANDROID_HOME") or ""
           lines = [f"sdk.dir={sdk}"]
           for name in ("HUGGINGFACE_API_KEY", "CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN"):
-              value = os.environ.get(name, "")
+              value = os.environ.get(name, "").strip().strip('"').strip("'")
               lines.append(f"{name}={value}")
+              print(f"{name} configured={'yes' if value else 'no'}")
           Path("local.properties").write_text("\n".join(lines) + "\n")
           print(f"Using SDK {sdk}")
           PY

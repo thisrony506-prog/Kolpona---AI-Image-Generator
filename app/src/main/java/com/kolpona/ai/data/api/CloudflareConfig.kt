@@ -13,10 +13,10 @@ object CloudflareConfig {
     const val USER_AGENT = "Kolpona/1.10.0 (Android)"
 
     val accountId: String
-        get() = BuildConfig.CLOUDFLARE_ACCOUNT_ID
+        get() = BuildConfig.CLOUDFLARE_ACCOUNT_ID.trim()
 
     val apiToken: String
-        get() = BuildConfig.CLOUDFLARE_API_TOKEN
+        get() = BuildConfig.CLOUDFLARE_API_TOKEN.trim()
 
     val isConfigured: Boolean
         get() = accountId.isNotBlank() && apiToken.isNotBlank()

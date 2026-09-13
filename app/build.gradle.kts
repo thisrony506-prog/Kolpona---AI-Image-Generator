@@ -16,9 +16,9 @@ val localProperties = Properties().apply {
 
 fun secret(name: String): String {
     val fromEnv = System.getenv(name)
-    if (!fromEnv.isNullOrBlank()) return fromEnv
+    if (!fromEnv.isNullOrBlank()) return fromEnv.trim().trim('"').trim('\'')
     val fromLocal = localProperties.getProperty(name)
-    if (!fromLocal.isNullOrBlank()) return fromLocal
+    if (!fromLocal.isNullOrBlank()) return fromLocal.trim().trim('"').trim('\'')
     return ""
 }
 
@@ -33,8 +33,8 @@ android {
         applicationId = "com.kolpona.ai"
         minSdk = 24
         targetSdk = 34
-        versionCode = 21
-        versionName = "1.10.0"
+        versionCode = 22
+        versionName = "1.10.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true

@@ -1,11 +1,14 @@
 package com.kolpona.app.data.api
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import com.kolpona.app.domain.model.GenerationError
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
@@ -15,7 +18,8 @@ import java.nio.charset.StandardCharsets
 class GenerationException(val error: GenerationError) : Exception()
 
 /**
- * Pollinations image client. Always requests nologo so the image has no watermark.
+ * Pollinations image client.
+ * nologo=true plus the API token when present. Public fallback crops the watermark strip.
  */
 class PollinationsApiService(
     private val client: OkHttpClient
@@ -29,6 +33,7 @@ class PollinationsApiService(
     ): ByteArray = withContext(Dispatchers.IO) {
         val encodedPrompt = URLEncoder.encode(prompt.take(1500), StandardCharsets.UTF_8.name())
             .replace("+", "%20")
+        val key = PollinationsConfig.apiKey
         val primary = buildUrl(
             PollinationsConfig.API_BASE_URL,
             PollinationsConfig.IMAGE_PATH,
@@ -36,32 +41,40 @@ class PollinationsApiService(
             model,
             width,
             height,
-            seed
+            seed,
+            key
         )
-        val fallback = buildUrl(
-            PollinationsConfig.FALLBACK_BASE_URL,
-            PollinationsConfig.FALLBACK_PATH,
-            encodedPrompt,
-            model,
-            width,
-            height,
-            seed
-        )
-        try {
+        val bytes = if (key.isNotBlank()) {
             execute(primary)
-        } catch (first: GenerationException) {
-            if (first.error == GenerationError.NETWORK ||
-                first.error == GenerationError.TIMEOUT ||
-                first.error == GenerationError.RATE_LIMIT
-            ) {
-                throw first
-            }
+        } else {
+            val fallback = buildUrl(
+                PollinationsConfig.FALLBACK_BASE_URL,
+                PollinationsConfig.FALLBACK_PATH,
+                encodedPrompt,
+                model,
+                width,
+                height,
+                seed,
+                key = ""
+            )
             try {
-                execute(fallback)
-            } catch (_: GenerationException) {
-                throw first
-            }
+                execute(primary)
+            } catch (first: GenerationException) {
+                if (first.error == GenerationError.NETWORK ||
+                    first.error == GenerationError.TIMEOUT ||
+                    first.error == GenerationError.RATE_LIMIT ||
+                    first.error == GenerationError.INVALID_PROMPT
+                ) {
+                    throw first
+                }
+                try {
+                    stripWatermark(execute(fallback))
+                } catch (_: GenerationException) {
+                    throw first
+                }
+            }.let { raw -> stripWatermark(raw) }
         }
+        bytes
     }
 
     private fun buildUrl(
@@ -71,7 +84,8 @@ class PollinationsApiService(
         model: String,
         width: Int,
         height: Int,
-        seed: Int?
+        seed: Int?,
+        key: String
     ): String {
         val builder = "$base/$path/$encodedPrompt"
             .toHttpUrl()
@@ -86,6 +100,7 @@ class PollinationsApiService(
             .addQueryParameter("safe", "false")
             .addQueryParameter("referrer", "kolpona")
         if (seed != null) builder.addQueryParameter("seed", seed.toString())
+        if (key.isNotBlank()) builder.addQueryParameter("token", key)
         return builder.build().toString()
     }
 
@@ -94,7 +109,7 @@ class PollinationsApiService(
             .url(url)
             .get()
             .header("Accept", "image/jpeg,image/png,image/webp,image/*")
-            .header("User-Agent", "Kolpona/1.1.1 (Android)")
+            .header("User-Agent", "Kolpona/1.1.2 (Android)")
             .build()
         try {
             client.newCall(request).execute().use { response ->
@@ -128,6 +143,22 @@ class PollinationsApiService(
             throw GenerationException(GenerationError.NETWORK)
         } catch (_: Exception) {
             throw GenerationException(GenerationError.UNKNOWN)
+        }
+    }
+
+    private fun stripWatermark(bytes: ByteArray): ByteArray {
+        return try {
+            val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return bytes
+            val crop = (bmp.height * 0.055f).toInt().coerceIn(32, 64)
+            if (bmp.height <= crop + 128) return bytes
+            val trimmed = Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height - crop)
+            val out = ByteArrayOutputStream()
+            trimmed.compress(Bitmap.CompressFormat.JPEG, 95, out)
+            if (!bmp.isRecycled) bmp.recycle()
+            if (!trimmed.isRecycled) trimmed.recycle()
+            out.toByteArray()
+        } catch (_: Exception) {
+            bytes
         }
     }
 

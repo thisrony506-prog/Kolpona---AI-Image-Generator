@@ -10,52 +10,41 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
-import java.lang.reflect.Proxy
+import com.startapp.sdk.ads.banner.Banner
+import com.startapp.sdk.adsbase.Ad
+import com.startapp.sdk.adsbase.StartAppAd
+import com.startapp.sdk.adsbase.StartAppAd.AdMode
+import com.startapp.sdk.adsbase.StartAppSDK
+import com.startapp.sdk.adsbase.VideoListener
+import com.startapp.sdk.adsbase.adlisteners.AdDisplayListener
+import com.startapp.sdk.adsbase.adlisteners.AdEventListener
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Start.io ads: rewarded video (load-on-click), interstitial, banner.
+ * Start.io ads using the official SDK (not reflection).
  *
- * Rewards are granted only after an ad was actually displayed.
- * Failures never crash the app.
+ * Rewarded video is loaded on tap, then VIDEO / FULLPAGE so the user actually
+ * sees an ad. Credits are granted only after an ad was displayed.
  */
 class StartIoAdManager(
     private val app: Application
 ) {
     private val main = Handler(Looper.getMainLooper())
-
-    @Volatile
-    private var interstitialAd: Any? = null
-
-    @Volatile
-    private var interstitialReady: Boolean = false
-
     private val showInFlight = AtomicBoolean(false)
+
+    @Volatile
+    private var interstitial: StartAppAd? = null
+
+    @Volatile
+    private var rewarded: StartAppAd? = null
 
     fun initialize() {
         try {
-            val sdk = Class.forName("com.startapp.sdk.adsbase.StartAppSDK")
-            val initParams = sdk.methods.find { it.name == "initParams" && it.parameterCount == 2 }
-            if (initParams != null) {
-                val params = initParams.invoke(null, app, AdsConfig.APP_ID)
-                params?.javaClass?.methods
-                    ?.find { it.name == "setReturnAdsEnabled" }
-                    ?.invoke(params, false)
-                params?.javaClass?.methods
-                    ?.find { it.name == "init" && it.parameterCount == 0 }
-                    ?.invoke(params)
-            } else {
-                sdk.methods.find { it.name == "init" && it.parameterCount == 3 }
-                    ?.invoke(null, app, AdsConfig.APP_ID, false)
-            }
-            sdk.methods.find { it.name == "setTestAdsEnabled" && it.parameterCount == 1 }
-                ?.invoke(null, AdsConfig.isTestMode)
-            val startAppAd = Class.forName("com.startapp.sdk.adsbase.StartAppAd")
-            startAppAd.methods.find { it.name == "disableSplash" && it.parameterCount == 0 }
-                ?.invoke(null)
-            startAppAd.methods.find { it.name == "disableAutoInterstitial" && it.parameterCount == 0 }
-                ?.invoke(null)
+            StartAppSDK.init(app, AdsConfig.APP_ID, false)
+            StartAppSDK.setTestAdsEnabled(AdsConfig.isTestMode)
+            runCatching { StartAppAd.disableSplash() }
+            runCatching { StartAppAd.disableAutoInterstitial() }
             Log.d(TAG, "Start.io initialized testMode=${AdsConfig.isTestMode}")
         } catch (t: Throwable) {
             Log.w(TAG, "Start.io init failed", t)
@@ -63,33 +52,54 @@ class StartIoAdManager(
     }
 
     fun preload(activity: Activity) {
+        preloadRewarded(activity)
         preloadInterstitial(activity)
     }
 
-    fun preloadInterstitial(activity: Activity) {
+    fun preloadRewarded(activity: Activity) {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            main.post { preloadRewarded(activity) }
+            return
+        }
         try {
-            val startAppAdClass = Class.forName("com.startapp.sdk.adsbase.StartAppAd")
-            val ad = startAppAdClass.getConstructor(Context::class.java).newInstance(activity)
-            interstitialReady = false
-            val listener = adListener { ready ->
-                interstitialReady = ready
-                Log.d(TAG, "interstitial load ready=$ready")
-            }
-            startAppAdClass.methods.find { it.name == "loadAd" && it.parameterCount == 1 }
-                ?.invoke(ad, listener)
-                ?: startAppAdClass.methods.find { it.name == "loadAd" && it.parameterCount == 0 }
-                    ?.invoke(ad)
-            interstitialAd = ad
+            val ad = StartAppAd(activity)
+            rewarded = ad
+            ad.loadAd(AdMode.REWARDED_VIDEO, object : AdEventListener {
+                override fun onReceiveAd(loaded: Ad) {
+                    Log.d(TAG, "rewarded preloaded")
+                }
+
+                override fun onFailedToReceiveAd(loaded: Ad?) {
+                    Log.d(TAG, "rewarded preload empty")
+                }
+            })
         } catch (t: Throwable) {
-            Log.w(TAG, "preload interstitial failed", t)
-            interstitialReady = false
+            Log.w(TAG, "preload rewarded failed", t)
         }
     }
 
-    /**
-     * Loads a rewarded video on demand, then shows it.
-     * Falls back to VIDEO then interstitial so the user actually sees an ad.
-     */
+    fun preloadInterstitial(activity: Activity) {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            main.post { preloadInterstitial(activity) }
+            return
+        }
+        try {
+            val ad = StartAppAd(activity)
+            interstitial = ad
+            ad.loadAd(AdMode.FULLPAGE, object : AdEventListener {
+                override fun onReceiveAd(loaded: Ad) {
+                    Log.d(TAG, "interstitial preloaded")
+                }
+
+                override fun onFailedToReceiveAd(loaded: Ad?) {
+                    Log.d(TAG, "interstitial preload empty")
+                }
+            })
+        } catch (t: Throwable) {
+            Log.w(TAG, "preload interstitial failed", t)
+        }
+    }
+
     fun showRewarded(
         activity: Activity,
         onRewarded: (token: String) -> Unit,
@@ -100,13 +110,16 @@ class StartIoAdManager(
             main.post { showRewarded(activity, onRewarded, onUnavailable, onClosed) }
             return
         }
+        if (activity.isFinishing || activity.isDestroyed) {
+            onUnavailable()
+            return
+        }
         if (!showInFlight.compareAndSet(false, true)) return
 
         val token = UUID.randomUUID().toString()
         val displayed = AtomicBoolean(false)
         val granted = AtomicBoolean(false)
         val finished = AtomicBoolean(false)
-        val loaded = AtomicBoolean(false)
 
         fun finishUnavailable() {
             if (finished.compareAndSet(false, true)) {
@@ -119,6 +132,7 @@ class StartIoAdManager(
             if (finished.compareAndSet(false, true)) {
                 showInFlight.set(false)
                 onClosed()
+                preloadRewarded(activity)
                 preloadInterstitial(activity)
             }
         }
@@ -129,49 +143,103 @@ class StartIoAdManager(
             }
         }
 
-        try {
-            val startAppAdClass = Class.forName("com.startapp.sdk.adsbase.StartAppAd")
-            val displayListener = displayListener(
-                onDisplayed = { displayed.set(true) },
-                onHidden = {
-                    if (displayed.get()) grant()
-                    finishClosed()
-                },
-                onNotDisplayed = { finishUnavailable() }
-            )
-
-            fun bindAndShow(ad: Any) {
-                loaded.set(true)
-                attachVideoListener(ad) { grant() }
-                val shown = showAd(ad, displayListener)
-                if (shown == false) {
-                    finishUnavailable()
-                }
+        val displayListener = object : AdDisplayListener {
+            override fun adDisplayed(ad: Ad?) {
+                displayed.set(true)
             }
 
-            val modes = listOf("REWARDED", "VIDEO", "FULLPAGE", "AUTOMATIC")
-            loadFirstAvailable(
-                startAppAdClass = startAppAdClass,
-                activity = activity,
-                modeHints = modes,
-                onLoaded = { ad -> bindAndShow(ad) },
-                onFailed = {
-                    val cached = interstitialAd
-                    if (cached != null && (interstitialReady || isAdReady(cached))) {
-                        interstitialReady = false
-                        bindAndShow(cached)
-                    } else {
+            override fun adHidden(ad: Ad?) {
+                if (displayed.get()) grant()
+                finishClosed()
+            }
+
+            override fun adClicked(ad: Ad?) = Unit
+
+            override fun adNotDisplayed(ad: Ad?) {
+                if (!displayed.get()) finishUnavailable()
+            }
+        }
+
+        fun bindAndShow(ad: StartAppAd) {
+            try {
+                ad.setVideoListener(object : VideoListener {
+                    override fun onVideoCompleted() {
+                        grant()
+                    }
+                })
+            } catch (t: Throwable) {
+                Log.w(TAG, "video listener", t)
+            }
+            val shown = try {
+                ad.showAd(displayListener)
+            } catch (t: Throwable) {
+                Log.w(TAG, "showAd failed", t)
+                false
+            }
+            if (!shown) {
+                main.postDelayed({
+                    if (!displayed.get() && !finished.get()) {
+                        Log.w(TAG, "showAd returned false")
                         finishUnavailable()
                     }
-                }
-            )
+                }, 1_200)
+            }
+        }
 
+        val modes = listOf(AdMode.REWARDED_VIDEO, AdMode.VIDEO, AdMode.FULLPAGE, AdMode.AUTOMATIC)
+
+        fun tryMode(index: Int) {
+            if (finished.get()) return
+            if (activity.isFinishing || activity.isDestroyed) {
+                finishUnavailable()
+                return
+            }
+            if (index >= modes.size) {
+                val cached = interstitial
+                if (cached != null && cached.isReady) {
+                    bindAndShow(cached)
+                } else {
+                    finishUnavailable()
+                }
+                return
+            }
+            if (index == 0) {
+                val ready = rewarded
+                if (ready != null && ready.isReady) {
+                    Log.d(TAG, "showing preloaded rewarded")
+                    bindAndShow(ready)
+                    return
+                }
+            }
+            val mode = modes[index]
+            val ad = StartAppAd(activity)
+            Log.d(TAG, "loading ad mode=$mode")
+            ad.loadAd(mode, object : AdEventListener {
+                override fun onReceiveAd(loaded: Ad) {
+                    main.post {
+                        if (finished.get()) return@post
+                        Log.d(TAG, "loaded mode=$mode")
+                        bindAndShow(ad)
+                    }
+                }
+
+                override fun onFailedToReceiveAd(loaded: Ad?) {
+                    main.post {
+                        Log.d(TAG, "no fill mode=$mode")
+                        tryMode(index + 1)
+                    }
+                }
+            })
+        }
+
+        try {
+            tryMode(0)
             main.postDelayed({
-                if (!loaded.get() && !displayed.get() && !granted.get() && !finished.get()) {
+                if (!displayed.get() && !granted.get() && !finished.get()) {
                     Log.w(TAG, "rewarded wait timed out")
                     finishUnavailable()
                 }
-            }, 16_000)
+            }, 28_000)
         } catch (t: Throwable) {
             Log.w(TAG, "show rewarded failed", t)
             finishUnavailable()
@@ -183,20 +251,23 @@ class StartIoAdManager(
             main.post { showInterstitial(activity) }
             return
         }
-        val ad = interstitialAd
-        val ready = interstitialReady || isAdReady(ad)
-        if (ad == null || !ready) {
+        val ad = interstitial
+        if (ad == null || !ad.isReady) {
             preloadInterstitial(activity)
             return
         }
         try {
-            interstitialReady = false
-            val displayListener = displayListener(
-                onDisplayed = {},
-                onHidden = { preloadInterstitial(activity) },
-                onNotDisplayed = { preloadInterstitial(activity) }
-            )
-            showAd(ad, displayListener)
+            ad.showAd(object : AdDisplayListener {
+                override fun adDisplayed(shown: Ad?) = Unit
+                override fun adClicked(shown: Ad?) = Unit
+                override fun adHidden(shown: Ad?) {
+                    preloadInterstitial(activity)
+                }
+
+                override fun adNotDisplayed(shown: Ad?) {
+                    preloadInterstitial(activity)
+                }
+            })
         } catch (t: Throwable) {
             Log.w(TAG, "show interstitial failed", t)
             preloadInterstitial(activity)
@@ -205,25 +276,13 @@ class StartIoAdManager(
 
     fun createBanner(context: Context): View? {
         return try {
-            val bannerClass = firstClass(
-                "com.startapp.sdk.ads.banner.Banner",
-                "com.startapp.sdk.ads.banner.bannerstandard.BannerStandard",
-                "com.startapp.android.publish.ads.banner.Banner"
-            ) ?: return null
-            val ctor = bannerClass.constructors.firstOrNull { constructor ->
-                constructor.parameterCount == 1 &&
-                    Context::class.java.isAssignableFrom(constructor.parameterTypes[0])
-            } ?: return null
-            val banner = ctor.newInstance(context) as? View ?: return null
+            val banner = Banner(context)
             val height = (50 * context.resources.displayMetrics.density).toInt()
             banner.layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 height
             ).apply { gravity = Gravity.CENTER }
-            runCatching {
-                banner.javaClass.methods.find { it.name == "loadAd" && it.parameterCount == 0 }
-                    ?.invoke(banner)
-            }
+            runCatching { banner.loadAd() }
             val host = FrameLayout(context)
             host.layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, height)
             host.addView(banner)
@@ -232,167 +291,6 @@ class StartIoAdManager(
             Log.w(TAG, "create banner failed", t)
             null
         }
-    }
-
-    private fun loadFirstAvailable(
-        startAppAdClass: Class<*>,
-        activity: Activity,
-        modeHints: List<String>,
-        onLoaded: (Any) -> Unit,
-        onFailed: () -> Unit
-    ) {
-        val remaining = modeHints.toMutableList()
-        fun tryNext() {
-            val hint = remaining.removeFirstOrNull()
-            val ad = try {
-                startAppAdClass.getConstructor(Context::class.java).newInstance(activity)
-            } catch (_: Throwable) {
-                onFailed()
-                return
-            }
-            val listener = adListener { ready ->
-                main.post {
-                    if (ready) {
-                        Log.d(TAG, "ad loaded mode=$hint")
-                        onLoaded(ad)
-                    } else if (remaining.isNotEmpty()) {
-                        tryNext()
-                    } else {
-                        onFailed()
-                    }
-                }
-            }
-            val started = if (hint == null) {
-                invokeLoad(ad, null, listener)
-            } else {
-                invokeLoad(ad, adMode(startAppAdClass, hint), listener)
-            }
-            if (!started) {
-                if (remaining.isNotEmpty()) tryNext() else onFailed()
-            }
-        }
-        tryNext()
-    }
-
-    private fun invokeLoad(ad: Any, mode: Any?, listener: Any): Boolean {
-        return try {
-            if (mode != null) {
-                val two = ad.javaClass.methods.find { method ->
-                    method.name == "loadAd" && method.parameterCount == 2 &&
-                        method.parameterTypes[1].name.contains("AdEventListener")
-                }
-                if (two != null) {
-                    two.invoke(ad, mode, listener)
-                    return true
-                }
-            }
-            val one = ad.javaClass.methods.find { it.name == "loadAd" && it.parameterCount == 1 }
-            if (one != null) {
-                one.invoke(ad, listener)
-                true
-            } else {
-                ad.javaClass.methods.find { it.name == "loadAd" && it.parameterCount == 0 }?.invoke(ad)
-                true
-            }
-        } catch (t: Throwable) {
-            Log.w(TAG, "loadAd failed", t)
-            false
-        }
-    }
-
-    private fun showAd(ad: Any, displayListener: Any): Boolean? {
-        return try {
-            val withListener = ad.javaClass.methods.find { method ->
-                method.name == "showAd" && method.parameterCount == 1 &&
-                    method.parameterTypes[0].name.contains("AdDisplayListener")
-            }
-            val result = withListener?.invoke(ad, displayListener)
-                ?: ad.javaClass.methods.find { it.name == "showAd" && it.parameterCount == 0 }?.invoke(ad)
-            result as? Boolean
-        } catch (t: Throwable) {
-            Log.w(TAG, "showAd failed", t)
-            false
-        }
-    }
-
-    private fun attachVideoListener(ad: Any, onCompleted: () -> Unit) {
-        val videoListenerClass = firstClass(
-            "com.startapp.sdk.adsbase.VideoListener",
-            "com.startapp.sdk.adsbase.adlisteners.VideoListener"
-        ) ?: return
-        val videoListener = proxy(videoListenerClass) { name, _ ->
-            if (name == "onVideoCompleted" || name == "invoke") onCompleted()
-            null
-        }
-        runCatching {
-            ad.javaClass.methods.find { it.name == "setVideoListener" }?.invoke(ad, videoListener)
-        }
-    }
-
-    private fun displayListener(
-        onDisplayed: () -> Unit,
-        onHidden: () -> Unit,
-        onNotDisplayed: () -> Unit
-    ): Any {
-        val cls = Class.forName("com.startapp.sdk.adsbase.adlisteners.AdDisplayListener")
-        return proxy(cls) { name, _ ->
-            when (name) {
-                "adDisplayed", "adReceived" -> onDisplayed()
-                "adHidden" -> onHidden()
-                "adNotDisplayed" -> onNotDisplayed()
-            }
-            null
-        }
-    }
-
-    private fun adListener(onReady: (Boolean) -> Unit): Any {
-        val listenerClass = Class.forName("com.startapp.sdk.adsbase.adlisteners.AdEventListener")
-        return proxy(listenerClass) { name, _ ->
-            when (name) {
-                "onReceiveAd" -> onReady(true)
-                "onFailedToReceiveAd" -> onReady(false)
-            }
-            null
-        }
-    }
-
-    private fun proxy(listenerClass: Class<*>, handler: (String, Array<out Any>?) -> Any?): Any {
-        return Proxy.newProxyInstance(
-            listenerClass.classLoader,
-            arrayOf(listenerClass)
-        ) { proxy, method, args ->
-            when (method.name) {
-                "equals" -> proxy === args?.getOrNull(0)
-                "hashCode" -> System.identityHashCode(proxy)
-                "toString" -> "Kolpona:${listenerClass.simpleName}"
-                else -> handler(method.name, args)
-            }
-        }
-    }
-
-    private fun isAdReady(ad: Any?): Boolean {
-        if (ad == null) return false
-        return try {
-            val method = ad.javaClass.methods.find { it.name == "isReady" && it.parameterCount == 0 }
-            (method?.invoke(ad) as? Boolean) ?: false
-        } catch (_: Throwable) {
-            false
-        }
-    }
-
-    private fun adMode(startAppAdClass: Class<*>, hint: String): Any? {
-        val modeClass = startAppAdClass.classes.find { it.simpleName == "AdMode" }
-            ?: runCatching { Class.forName("com.startapp.sdk.adsbase.StartAppAd\$AdMode") }.getOrNull()
-            ?: return null
-        val constants = modeClass.enumConstants ?: return null
-        return constants.find { (it as Enum<*>).name.contains(hint, ignoreCase = true) }
-    }
-
-    private fun firstClass(vararg names: String): Class<*>? {
-        names.forEach { name ->
-            runCatching { Class.forName(name) }.getOrNull()?.let { return it }
-        }
-        return null
     }
 
     companion object {

@@ -67,6 +67,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -157,7 +158,9 @@ fun HomeScreen(
     }
 
     LaunchedEffect(Unit) {
-        activity?.let { viewModel.adManager.preload(it) }
+        activity?.let { host ->
+            host.window.decorView.post { viewModel.adManager.preload(host) }
+        }
         viewModel.events.collect { event ->
             when (event) {
                 HomeEvent.CreditsAdded -> {
@@ -216,10 +219,13 @@ fun HomeScreen(
         }
     }
 
-    Column(
+    Box(
         modifier = modifier
             .fillMaxSize()
             .imePadding()
+    ) {
+    Column(
+        modifier = Modifier.fillMaxSize()
     ) {
         ChatHeader(
             credits = state.credits,
@@ -289,6 +295,32 @@ fun HomeScreen(
         StartIoBanner(adManager = viewModel.adManager)
     }
 
+    if (state.watchingAd) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.45f))
+                .clickable(enabled = false, onClick = {}),
+            contentAlignment = Alignment.Center
+        ) {
+            Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 22.dp, vertical = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(22.dp),
+                        strokeWidth = 2.dp,
+                        color = PinkAccent
+                    )
+                    Spacer(Modifier.size(12.dp))
+                    Text(stringResource(R.string.ad_loading))
+                }
+            }
+        }
+    }
+    }
+
     if (showCreditsSheet) {
         ModalBottomSheet(
             onDismissRequest = { if (!state.watchingAd) showCreditsSheet = false },
@@ -301,17 +333,24 @@ fun HomeScreen(
                 enabled = !state.isGenerating && !state.watchingAd,
                 onWatch = {
                     val host = activity
-                    if (host == null) {
+                    if (host == null || host.isFinishing) {
                         viewModel.onAdUnavailable()
                         return@CreditsSheet
                     }
+                    showCreditsSheet = false
                     viewModel.setWatchingAd(true)
-                    viewModel.adManager.showRewarded(
-                        activity = host,
-                        onRewarded = viewModel::onAdRewarded,
-                        onUnavailable = viewModel::onAdUnavailable,
-                        onClosed = viewModel::onAdClosed
-                    )
+                    host.window.decorView.postDelayed({
+                        if (host.isFinishing || host.isDestroyed) {
+                            viewModel.onAdUnavailable()
+                            return@postDelayed
+                        }
+                        viewModel.adManager.showRewarded(
+                            activity = host,
+                            onRewarded = viewModel::onAdRewarded,
+                            onUnavailable = viewModel::onAdUnavailable,
+                            onClosed = viewModel::onAdClosed
+                        )
+                    }, 500)
                 }
             )
         }

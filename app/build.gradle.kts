@@ -27,7 +27,7 @@ fun escapeBuildConfig(value: String): String =
 
 android {
     namespace = "com.kolpona.app"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.kolpona.app"

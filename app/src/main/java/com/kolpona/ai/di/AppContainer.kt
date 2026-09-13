@@ -14,6 +14,7 @@ import com.kolpona.ai.data.repository.ChatRepository
 import com.kolpona.ai.data.repository.GenerateImageUseCase
 import com.kolpona.ai.data.repository.HistoryRepository
 import com.kolpona.ai.domain.manager.CreditManager
+import com.kolpona.ai.notify.KolponaNotifier
 import com.kolpona.ai.update.AppUpdateManager
 import com.kolpona.ai.utils.ImageFileStore
 import com.kolpona.ai.utils.ImageSaver
@@ -35,7 +36,8 @@ class AppContainer(app: Application) {
     val imageSaver: ImageSaver = ImageSaver(app)
     val imageShare: ImageShare = ImageShare(app)
     val adManager: StartIoAdManager = StartIoAdManager(app)
-    val updateManager: AppUpdateManager = AppUpdateManager(app, preferences, networkMonitor)
+    val notifier: KolponaNotifier = KolponaNotifier(app, preferences)
+    val updateManager: AppUpdateManager = AppUpdateManager(app, preferences, networkMonitor, notifier)
 
     private val okHttpClient: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
@@ -56,6 +58,7 @@ class AppContainer(app: Application) {
         credits = creditManager,
         files = imageStore,
         enhancer = PromptEnhancer(textNormalize),
-        networkMonitor = networkMonitor
+        networkMonitor = networkMonitor,
+        notifier = notifier
     )
 }

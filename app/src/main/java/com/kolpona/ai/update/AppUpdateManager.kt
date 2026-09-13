@@ -15,6 +15,7 @@ import androidx.core.content.FileProvider
 import com.kolpona.ai.BuildConfig
 import com.kolpona.ai.data.prefs.AppPreferences
 import com.kolpona.ai.data.prefs.PendingUpdate
+import com.kolpona.ai.notify.KolponaNotifier
 import com.kolpona.ai.utils.NetworkMonitor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -59,7 +60,8 @@ enum class UpdatePhase {
 class AppUpdateManager(
     private val app: Application,
     private val preferences: AppPreferences,
-    private val networkMonitor: NetworkMonitor
+    private val networkMonitor: NetworkMonitor,
+    private val notifier: KolponaNotifier
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val mutex = Mutex()
@@ -84,6 +86,10 @@ class AppUpdateManager(
 
     fun check() {
         scope.launch { performCheck() }
+    }
+
+    suspend fun checkNow() {
+        performCheck()
     }
 
     fun onForeground() {
@@ -172,6 +178,7 @@ class AppUpdateManager(
                     notes = pending.notes,
                     phase = phase
                 )
+                notifier.notifyUpdateIfNew(pending.versionCode, pending.versionName)
             } else if (_state.value !is UpdateUiState.Required) {
                 _state.value = UpdateUiState.Checking
             }
@@ -199,6 +206,7 @@ class AppUpdateManager(
             }
 
             preferences.setPendingUpdate(remote)
+            notifier.notifyUpdateIfNew(remote.versionCode, remote.versionName)
             val apk = apkFile(remote.versionCode)
             val phase = when {
                 apk != null && apk.isValidApk() && canRequestInstalls() -> UpdatePhase.ReadyToInstall

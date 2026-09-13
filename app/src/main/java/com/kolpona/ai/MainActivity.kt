@@ -1,9 +1,13 @@
 package com.kolpona.ai
 
+import android.Manifest
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.DisposableEffect
@@ -47,10 +51,21 @@ class MainActivity : ComponentActivity() {
             var ready by remember { mutableStateOf(false) }
             var showOnboarding by remember { mutableStateOf(true) }
             var gateOpen by remember { mutableStateOf(false) }
+            val notificationPermission = rememberLauncherForActivityResult(
+                ActivityResultContracts.RequestPermission()
+            ) { }
 
             LaunchedEffect(Unit) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }
                 showOnboarding = !app.container.preferences.onboardingComplete.first()
                 ready = true
+            }
+
+            LaunchedEffect(currentUser?.uid) {
+                val user = currentUser ?: return@LaunchedEffect
+                app.container.notifier.welcomeIfNeeded(user.uid, user.displayName)
             }
 
             LaunchedEffect(Unit) {

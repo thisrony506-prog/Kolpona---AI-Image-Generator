@@ -57,7 +57,9 @@ fun PrivacyPolicyScreen(onBack: () -> Unit) {
                 "Generation requests are sent to Hugging Face and Cloudflare Workers AI so the result can be created. " +
                 "We do not sell your personal information.\n\n" +
                 "Account sign-in uses Firebase Authentication. Your name, email, and Google account identifiers are processed " +
-                "by Google Firebase so you can create and use a Kolpona account.\n\n" +
+                "by Google Firebase so you can create and use a Kolpona account. " +
+                "Kolpona may show device notifications when an update is ready, a creation finishes, or you sign in. " +
+                "Optional Firebase Cloud Messaging delivers those alerts if you allow notifications.\n\n" +
                 "Optional rewarded videos are provided by Start.io. Their SDK may collect device advertising identifiers " +
                 "to show ads. Credits and settings stay on this device.\n\n" +
                 "You can clear local history at any time from Settings. Uninstalling the app removes locally stored images " +

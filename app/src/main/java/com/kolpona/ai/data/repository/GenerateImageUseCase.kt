@@ -10,6 +10,7 @@ import com.kolpona.ai.domain.model.GenerationError
 import com.kolpona.ai.domain.model.GenerationInput
 import com.kolpona.ai.domain.model.GenerationOutcome
 import com.kolpona.ai.domain.model.MediaKind
+import com.kolpona.ai.notify.KolponaNotifier
 import com.kolpona.ai.utils.ImageFileStore
 import com.kolpona.ai.utils.NetworkMonitor
 import com.kolpona.ai.utils.PromptEnhancer
@@ -23,7 +24,8 @@ class GenerateImageUseCase(
     private val credits: CreditManager,
     private val files: ImageFileStore,
     private val enhancer: PromptEnhancer,
-    private val networkMonitor: NetworkMonitor
+    private val networkMonitor: NetworkMonitor,
+    private val notifier: KolponaNotifier
 ) {
     private val mutex = Mutex()
 

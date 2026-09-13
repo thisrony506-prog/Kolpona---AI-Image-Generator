@@ -104,6 +104,20 @@ class AppPreferences(context: Context) {
         }
     }
 
+    suspend fun getLastNotifiedUpdateCode(): Int =
+        dataStore.data.first()[KEY_NOTIFIED_UPDATE] ?: 0
+
+    suspend fun setLastNotifiedUpdateCode(code: Int) {
+        dataStore.edit { it[KEY_NOTIFIED_UPDATE] = code }
+    }
+
+    suspend fun getWelcomedUid(): String =
+        dataStore.data.first()[KEY_WELCOMED_UID].orEmpty()
+
+    suspend fun setWelcomedUid(uid: String) {
+        dataStore.edit { it[KEY_WELCOMED_UID] = uid }
+    }
+
     private companion object {
         val KEY_CREDITS = intPreferencesKey("credits")
         val KEY_LAST_RESET = longPreferencesKey("last_credit_reset_epoch_day")
@@ -118,6 +132,8 @@ class AppPreferences(context: Context) {
         val KEY_UPDATE_URL = stringPreferencesKey("pending_update_apk_url")
         val KEY_UPDATE_SHA = stringPreferencesKey("pending_update_sha256")
         val KEY_UPDATE_NOTES = stringPreferencesKey("pending_update_notes")
+        val KEY_NOTIFIED_UPDATE = intPreferencesKey("notified_update_version_code")
+        val KEY_WELCOMED_UID = stringPreferencesKey("welcomed_uid")
     }
 }
 

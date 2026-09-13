@@ -276,4 +276,17 @@
     <string name="auth_error_google_config">Google sign-in isn\'t configured in Firebase yet.</string>
     <string name="auth_error_google_sha">Google sign-in needs this app\'s SHA-1 in Firebase. Email login still works.</string>
     <string name="auth_error_generic">Couldn\'t sign in. Please try again.</string>
+
+    <string name="notify_channel_updates">Updates</string>
+    <string name="notify_channel_generation">Creations</string>
+    <string name="notify_channel_account">Account</string>
+    <string name="notify_update_title">Kolpona update ready</string>
+    <string name="notify_update_body">Version %s is ready. Open Kolpona to install it.</string>
+    <string name="notify_image_title">Your image is ready</string>
+    <string name="notify_image_body">Kolpona finished creating your image.</string>
+    <string name="notify_video_title">Your video is ready</string>
+    <string name="notify_video_body">Kolpona finished creating your video.</string>
+    <string name="notify_welcome_title">Welcome to Kolpona</string>
+    <string name="notify_welcome_body">Your account is ready. Start creating images and videos.</string>
+    <string name="notify_welcome_body_named">Welcome, %s. Your account is ready — start creating.</string>
 </resources>

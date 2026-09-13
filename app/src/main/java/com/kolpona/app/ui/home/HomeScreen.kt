@@ -292,6 +292,11 @@ fun HomeScreen(
             onSend = { send() }
         )
 
+        PromptSuggestionChips(
+            enabled = !state.isGenerating,
+            onPick = viewModel::onPromptChange
+        )
+
         StartIoBanner(adManager = viewModel.adManager)
     }
 
@@ -693,6 +698,43 @@ private fun ToolTab(
             fontWeight = FontWeight.SemiBold,
             style = MaterialTheme.typography.labelLarge
         )
+    }
+}
+
+@Composable
+private fun PromptSuggestionChips(
+    enabled: Boolean,
+    onPick: (String) -> Unit
+) {
+    val chips = listOf(
+        stringResource(R.string.chip_cat) to stringResource(R.string.chip_prompt_cat),
+        stringResource(R.string.chip_cinematic) to stringResource(R.string.chip_prompt_cinematic),
+        stringResource(R.string.chip_castle) to stringResource(R.string.chip_prompt_castle),
+        stringResource(R.string.chip_nature) to stringResource(R.string.chip_prompt_nature)
+    )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 12.dp, end = 12.dp, bottom = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        chips.forEach { (label, prompt) ->
+            SuggestionChip(
+                onClick = { onPick(prompt) },
+                enabled = enabled,
+                label = {
+                    Text(
+                        text = label,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                },
+                modifier = Modifier
+                    .weight(1f)
+                    .height(32.dp)
+            )
+        }
     }
 }
 

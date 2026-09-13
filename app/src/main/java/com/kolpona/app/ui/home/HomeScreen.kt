@@ -862,7 +862,7 @@ private fun PromptSuggestionChips(
         listOf(
             Triple(Icons.Outlined.Pets, stringResource(R.string.chip_cat), stringResource(R.string.chip_prompt_cat)),
             Triple(Icons.Outlined.MovieFilter, stringResource(R.string.chip_cinematic), stringResource(R.string.chip_prompt_cinematic)),
-            Triple(Icons.Outlined.TempleHindu, stringResource(R.string.chip_castle), stringResource(R.string.chip_prompt_castle)),
+            Triple(Icons.Outlined.AccountBalance, stringResource(R.string.chip_castle), stringResource(R.string.chip_prompt_castle)),
             Triple(Icons.Outlined.Landscape, stringResource(R.string.chip_nature), stringResource(R.string.chip_prompt_nature))
         )
     }

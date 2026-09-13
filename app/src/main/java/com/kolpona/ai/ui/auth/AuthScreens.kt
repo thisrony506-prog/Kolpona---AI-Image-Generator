@@ -4,6 +4,7 @@ import android.app.Activity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -21,7 +22,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -40,7 +40,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
@@ -57,6 +56,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -103,18 +103,27 @@ fun LoginScreen(
                 onDone = viewModel::signIn
             )
             AuthStatus(state)
-            Spacer(Modifier.height(16.dp))
-            AuthPrimaryButton(
+            Spacer(Modifier.height(18.dp))
+            AuthGradientButton(
                 text = stringResource(R.string.auth_login),
                 loading = state.loading,
+                enabled = !state.loading,
                 onClick = viewModel::signIn
             )
             TextButton(onClick = onForgotPassword, enabled = !state.loading) {
-                Text(stringResource(R.string.auth_forgot), color = ElectricBlue)
+                Text(
+                    text = stringResource(R.string.auth_forgot),
+                    color = ElectricBlue,
+                    fontWeight = FontWeight.SemiBold
+                )
             }
-            TextButton(onClick = onCreateAccount, enabled = !state.loading) {
-                Text(stringResource(R.string.auth_need_account), color = SoftWhite)
-            }
+            Spacer(Modifier.height(8.dp))
+            AuthHighlightAction(
+                prompt = stringResource(R.string.auth_new_here),
+                action = stringResource(R.string.auth_create_account),
+                enabled = !state.loading,
+                onClick = onCreateAccount
+            )
         }
     }
 }
@@ -156,16 +165,20 @@ fun RegisterScreen(
                 onTerms = onTerms
             )
             AuthStatus(state)
-            Spacer(Modifier.height(16.dp))
-            AuthSignUpButton(
-                text = stringResource(R.string.auth_sign_up),
+            Spacer(Modifier.height(18.dp))
+            AuthGradientButton(
+                text = stringResource(R.string.auth_create_account),
                 loading = state.loading,
                 enabled = !state.loading,
                 onClick = viewModel::register
             )
-            TextButton(onClick = onHaveAccount, enabled = !state.loading) {
-                Text(stringResource(R.string.auth_have_account), color = SoftWhite)
-            }
+            Spacer(Modifier.height(14.dp))
+            AuthHighlightAction(
+                prompt = stringResource(R.string.auth_have_account_prompt),
+                action = stringResource(R.string.auth_login),
+                enabled = !state.loading,
+                onClick = onHaveAccount
+            )
         }
     }
 }
@@ -398,34 +411,85 @@ private fun PolicyRow(
 }
 
 @Composable
-private fun AuthSignUpButton(
+private fun AuthGradientButton(
     text: String,
     loading: Boolean,
     enabled: Boolean,
     onClick: () -> Unit
 ) {
     val brush = Brush.horizontalGradient(listOf(ElectricBlue, NeonViolet, PinkAccent))
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(56.dp)
-            .clip(RoundedCornerShape(18.dp))
-            .background(brush)
-            .clickable(enabled = enabled && !loading, onClick = onClick),
-        contentAlignment = Alignment.Center
+    Box(modifier = Modifier.fillMaxWidth()) {
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .padding(horizontal = 10.dp)
+                .padding(top = 10.dp)
+                .clip(RoundedCornerShape(22.dp))
+                .background(brush)
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(58.dp)
+                .clip(RoundedCornerShape(18.dp))
+                .background(brush)
+                .clickable(enabled = enabled && !loading, onClick = onClick),
+            contentAlignment = Alignment.Center
+        ) {
+            if (loading) {
+                CircularProgressIndicator(
+                    color = Color.White,
+                    strokeWidth = 2.dp,
+                    modifier = Modifier.size(22.dp)
+                )
+            } else {
+                Text(
+                    text = text,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    letterSpacing = 0.3.sp
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AuthHighlightAction(
+    prompt: String,
+    action: String,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    val brush = Brush.horizontalGradient(listOf(ElectricBlue, NeonViolet, PinkAccent))
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        if (loading) {
-            CircularProgressIndicator(
-                color = Color.White,
-                strokeWidth = 2.dp,
-                modifier = Modifier.size(22.dp)
-            )
-        } else {
+        Text(
+            text = prompt,
+            color = MutedGray,
+            style = MaterialTheme.typography.bodyMedium
+        )
+        Spacer(Modifier.height(10.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(54.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .border(1.6.dp, brush, RoundedCornerShape(16.dp))
+                .background(ElectricBlue.copy(alpha = 0.12f), RoundedCornerShape(16.dp))
+                .clickable(enabled = enabled, onClick = onClick),
+            contentAlignment = Alignment.Center
+        ) {
             Text(
-                text = text,
-                color = Color.White,
-                fontWeight = FontWeight.Bold,
-                fontSize = 17.sp
+                text = action,
+                style = TextStyle(
+                    brush = brush,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp
+                )
             )
         }
     }
@@ -509,29 +573,12 @@ private fun AuthStatus(state: AuthUiState) {
 
 @Composable
 private fun AuthPrimaryButton(text: String, loading: Boolean, onClick: () -> Unit) {
-    Button(
-        onClick = onClick,
+    AuthGradientButton(
+        text = text,
+        loading = loading,
         enabled = !loading,
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(54.dp),
-        shape = RoundedCornerShape(16.dp),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = ElectricBlue,
-            contentColor = Color.White,
-            disabledContainerColor = ElectricBlue.copy(alpha = 0.4f)
-        )
-    ) {
-        if (loading) {
-            CircularProgressIndicator(
-                color = Color.White,
-                strokeWidth = 2.dp,
-                modifier = Modifier.size(22.dp)
-            )
-        } else {
-            Text(text, fontWeight = FontWeight.Bold)
-        }
-    }
+        onClick = onClick
+    )
 }
 
 @Composable
@@ -565,32 +612,33 @@ private fun AuthOrDivider() {
 
 @Composable
 private fun AuthGoogleButton(enabled: Boolean, onClick: () -> Unit) {
-    OutlinedButton(
+    Button(
         onClick = onClick,
         enabled = enabled,
         modifier = Modifier
             .fillMaxWidth()
-            .height(54.dp),
+            .height(56.dp),
         shape = RoundedCornerShape(16.dp),
-        colors = ButtonDefaults.outlinedButtonColors(contentColor = SoftWhite),
-        border = androidx.compose.foundation.BorderStroke(1.dp, GlassStroke)
+        colors = ButtonDefaults.buttonColors(
+            containerColor = Color.White,
+            contentColor = Color(0xFF1F1F1F),
+            disabledContainerColor = Color.White.copy(alpha = 0.72f),
+            disabledContentColor = Color(0xFF1F1F1F).copy(alpha = 0.6f)
+        ),
+        elevation = ButtonDefaults.buttonElevation(defaultElevation = 6.dp, pressedElevation = 2.dp),
+        border = BorderStroke(1.dp, Color.White)
     ) {
-        Box(
-            modifier = Modifier
-                .size(22.dp)
-                .clip(CircleShape)
-                .background(Color.White),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = "G",
-                color = Color(0xFF4285F4),
-                fontWeight = FontWeight.Black,
-                fontSize = 13.sp
-            )
-        }
-        Spacer(Modifier.width(10.dp))
-        Text(stringResource(R.string.auth_google), fontWeight = FontWeight.SemiBold)
+        Image(
+            painter = painterResource(R.drawable.ic_google),
+            contentDescription = null,
+            modifier = Modifier.size(22.dp)
+        )
+        Spacer(Modifier.width(12.dp))
+        Text(
+            text = stringResource(R.string.auth_google),
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 16.sp
+        )
     }
 }
 

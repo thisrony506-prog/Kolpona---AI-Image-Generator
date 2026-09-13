@@ -16,35 +16,26 @@ class HuggingFaceApiService(
 ) {
     val isConfigured: Boolean get() = HuggingFaceConfig.isConfigured
 
-    suspend fun generateImage(prompt: String, width: Int, height: Int): ByteArray =
-        withContext(Dispatchers.IO) {
-            if (!isConfigured) throw GenerationException(GenerationError.API)
-            val models = listOf(
-                HuggingFaceConfig.IMAGE_MODEL_PRIMARY,
-                HuggingFaceConfig.IMAGE_MODEL_FALLBACK
-            )
-            var last: GenerationException? = null
-            for (model in models) {
-                try {
-                    return@withContext postModel(
-                        model = model,
-                        prompt = prompt,
-                        expectVideo = false,
-                        width = width,
-                        height = height
-                    )
-                } catch (e: GenerationException) {
-                    last = e
-                    if (e.error == GenerationError.INVALID_PROMPT ||
-                        e.error == GenerationError.NETWORK ||
-                        e.error == GenerationError.TIMEOUT
-                    ) {
-                        throw e
-                    }
-                }
-            }
-            throw last ?: GenerationException(GenerationError.API)
-        }
+    suspend fun generateImage(
+        prompt: String,
+        width: Int,
+        height: Int,
+        negativePrompt: String? = null,
+        model: String = HuggingFaceConfig.IMAGE_MODEL_PRIMARY
+    ): ByteArray = withContext(Dispatchers.IO) {
+        if (!isConfigured) throw GenerationException(GenerationError.API)
+        val (w, h) = fit(width, height)
+        val supportsNegative = model.contains("sdxl", ignoreCase = true)
+        postModel(
+            model = model,
+            prompt = prompt,
+            expectVideo = false,
+            width = w,
+            height = h,
+            negativePrompt = negativePrompt.takeIf { supportsNegative },
+            steps = 4
+        )
+    }
 
     suspend fun generateVideo(prompt: String): ByteArray = withContext(Dispatchers.IO) {
         if (!isConfigured) throw GenerationException(GenerationError.VIDEO_UNAVAILABLE)
@@ -53,7 +44,9 @@ class HuggingFaceApiService(
             prompt = prompt,
             expectVideo = true,
             width = null,
-            height = null
+            height = null,
+            negativePrompt = null,
+            steps = null
         )
     }
 
@@ -62,9 +55,12 @@ class HuggingFaceApiService(
         prompt: String,
         expectVideo: Boolean,
         width: Int?,
-        height: Int?
+        height: Int?,
+        negativePrompt: String?,
+        steps: Int?
     ): ByteArray {
-        val bodyJson = buildInputJson(prompt, width, height)
+        val rich = buildInputJson(prompt, width, height, negativePrompt, steps)
+        val simple = buildInputJson(prompt, null, null, null, null)
         val media = "application/json; charset=utf-8".toMediaType()
         val urls = listOf(
             "${HuggingFaceConfig.ROUTER_BASE}/$model",
@@ -72,10 +68,13 @@ class HuggingFaceApiService(
         )
         var last: GenerationException? = null
         for (url in urls) {
-            try {
-                return execute(url, bodyJson, media, expectVideo, waitForModel = true)
-            } catch (e: GenerationException) {
-                last = e
+            for (body in listOf(rich, simple).distinct()) {
+                try {
+                    return execute(url, body, media, expectVideo)
+                } catch (e: GenerationException) {
+                    last = e
+                    if (e.error == GenerationError.NETWORK || e.error == GenerationError.TIMEOUT) throw e
+                }
             }
         }
         throw last ?: GenerationException(GenerationError.API)
@@ -85,18 +84,15 @@ class HuggingFaceApiService(
         url: String,
         bodyJson: String,
         media: okhttp3.MediaType,
-        expectVideo: Boolean,
-        waitForModel: Boolean
+        expectVideo: Boolean
     ): ByteArray {
         val request = Request.Builder()
             .url(url)
             .post(bodyJson.toRequestBody(media))
             .header("Accept", if (expectVideo) "video/mp4,application/json" else "image/jpeg,image/png,application/json")
             .header("Content-Type", "application/json")
-            .header("User-Agent", "Kolpona/1.3.0 (Android)")
-            .apply {
-                if (waitForModel) header("X-Wait-For-Model", "true")
-            }
+            .header("User-Agent", "Kolpona/1.4.0 (Android)")
+            .header("X-Wait-For-Model", "true")
             .build()
         try {
             client.newCall(request).execute().use { response ->
@@ -131,14 +127,40 @@ class HuggingFaceApiService(
         }
     }
 
-    private fun buildInputJson(prompt: String, width: Int?, height: Int?): String {
+    private fun buildInputJson(
+        prompt: String,
+        width: Int?,
+        height: Int?,
+        negativePrompt: String?,
+        steps: Int?
+    ): String {
         val quoted = jsonEscape(prompt.take(1400))
-        return if (width != null && height != null) {
-            """{"inputs":"$quoted","parameters":{"width":$width,"height":$height}}"""
-        } else {
+        val params = buildList {
+            if (width != null && height != null) {
+                add("\"width\":$width")
+                add("\"height\":$height")
+            }
+            if (!negativePrompt.isNullOrBlank()) {
+                add("\"negative_prompt\":\"${jsonEscape(negativePrompt.take(500))}\"")
+            }
+            if (steps != null) add("\"num_inference_steps\":$steps")
+        }
+        return if (params.isEmpty()) {
             """{"inputs":"$quoted"}"""
+        } else {
+            """{"inputs":"$quoted","parameters":{${params.joinToString(",")}}}"""
         }
     }
+
+    private fun fit(width: Int, height: Int): Pair<Int, Int> {
+        val maxSide = 1024
+        val scale = maxOf(width, height).toFloat() / maxSide
+        val w = if (scale > 1f) (width / scale).toInt() else width
+        val h = if (scale > 1f) (height / scale).toInt() else height
+        return align(w.coerceAtLeast(512)) to align(h.coerceAtLeast(512))
+    }
+
+    private fun align(value: Int): Int = value - (value % 8)
 
     private fun jsonEscape(value: String): String = buildString {
         value.forEach { c ->

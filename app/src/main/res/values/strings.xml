@@ -151,7 +151,7 @@
     <string name="default_style">Default Category</string>
     <string name="default_aspect_ratio">Default Aspect Ratio</string>
     <string name="enhance_prompts">Enhance prompts</string>
-    <string name="enhance_prompts_subtitle">Add only relevant visual or motion detail. Original text stays in chat.</string>
+    <string name="enhance_prompts_subtitle">Understand any language or dialect, then add only relevant visual or motion detail. Original text stays in chat.</string>
     <string name="quality_standard">Standard</string>
     <string name="quality_high">High</string>
     <string name="clear_history">Clear History</string>

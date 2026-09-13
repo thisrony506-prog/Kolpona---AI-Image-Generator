@@ -5,6 +5,7 @@ import com.kolpona.app.BuildConfig
 /**
  * Hugging Face Inference configuration.
  * The API token is injected at build time from CI / local.properties. Never log it.
+ * Keys shared in chat are treated as exposed; use newly generated CI secrets only.
  */
 object HuggingFaceConfig {
     const val ROUTER_BASE = "https://router.huggingface.co/hf-inference/models"

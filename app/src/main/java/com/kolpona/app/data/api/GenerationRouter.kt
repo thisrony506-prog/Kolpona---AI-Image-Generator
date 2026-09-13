@@ -2,12 +2,15 @@ package com.kolpona.app.data.api
 
 import com.kolpona.app.domain.model.GenerationError
 import com.kolpona.app.domain.model.MediaKind
+import com.kolpona.app.prompt.SceneKind
 
 data class MediaRequest(
     val prompt: String,
     val mediaType: MediaKind,
     val width: Int,
-    val height: Int
+    val height: Int,
+    val negativePrompt: String? = null,
+    val scene: SceneKind = SceneKind.GENERAL
 )
 
 data class MediaBytes(
@@ -15,16 +18,25 @@ data class MediaBytes(
     val model: String
 )
 
+private data class RoutedModel(
+    val id: String,
+    val media: MediaKind,
+    val promptAdherence: Int,
+    val photoreal: Int,
+    val supportsNegative: Boolean,
+    val generate: suspend (MediaRequest) -> ByteArray
+)
+
 /**
- * Picks a real image-capable or video-capable provider, then falls back.
- * Never uses an image endpoint to fake video.
+ * Capability-based router. Image models never generate video.
+ * Order is scored for the request, then failed attempts fall through.
  */
 class GenerationRouter(
     private val huggingFace: HuggingFaceApiService,
     private val pollinations: PollinationsApiService
 ) {
     suspend fun generate(request: MediaRequest): MediaBytes {
-        val chain = providersFor(request.mediaType)
+        val chain = rank(request)
         if (chain.isEmpty()) {
             throw GenerationException(
                 if (request.mediaType == MediaKind.VIDEO) GenerationError.VIDEO_UNAVAILABLE
@@ -32,62 +44,117 @@ class GenerationRouter(
             )
         }
         var last: GenerationException? = null
-        for (provider in chain) {
+        for (model in chain) {
             try {
-                return provider.invoke(request)
-            } catch (e: GenerationException) {
-                last = e
-                if (e.error == GenerationError.INVALID_PROMPT ||
-                    e.error == GenerationError.NETWORK ||
-                    e.error == GenerationError.TIMEOUT ||
-                    e.error == GenerationError.RATE_LIMIT
-                ) {
+                val bytes = model.generate(request)
+                if (!qualityOk(bytes, request.mediaType)) {
+                    last = GenerationException(
+                        if (request.mediaType == MediaKind.VIDEO) GenerationError.VIDEO_UNAVAILABLE
+                        else GenerationError.EMPTY_RESPONSE
+                    )
                     continue
                 }
+                return MediaBytes(bytes, model.id)
+            } catch (e: GenerationException) {
+                last = e
             }
         }
         throw last ?: GenerationException(GenerationError.API)
     }
 
-    private fun providersFor(kind: MediaKind): List<suspend (MediaRequest) -> MediaBytes> {
-        return when (kind) {
-            MediaKind.IMAGE -> buildList {
-                if (huggingFace.isConfigured) {
-                    add { req ->
-                        MediaBytes(
-                            huggingFace.generateImage(req.prompt, req.width, req.height),
-                            HuggingFaceConfig.IMAGE_MODEL_PRIMARY
-                        )
-                    }
-                }
-                add { req ->
-                    MediaBytes(
-                        pollinations.generateImage(
-                            prompt = req.prompt,
-                            model = PollinationsConfig.DEFAULT_MODEL,
-                            width = req.width,
-                            height = req.height
-                        ),
-                        PollinationsConfig.DEFAULT_MODEL
+    private fun rank(request: MediaRequest): List<RoutedModel> {
+        val wantsPeople = request.scene == SceneKind.PERSON ||
+            request.scene == SceneKind.FASHION ||
+            request.scene == SceneKind.PRODUCT
+        return catalog()
+            .filter { it.media == request.mediaType }
+            .sortedByDescending { model ->
+                var score = model.promptAdherence * 2 + model.photoreal
+                if (wantsPeople) score += model.photoreal
+                if (request.negativePrompt != null && model.supportsNegative) score += 1
+                score
+            }
+    }
+
+    private fun catalog(): List<RoutedModel> = buildList {
+        add(
+            RoutedModel(
+                id = PollinationsConfig.DEFAULT_MODEL,
+                media = MediaKind.IMAGE,
+                promptAdherence = 5,
+                photoreal = 5,
+                supportsNegative = false
+            ) { req ->
+                pollinations.generateImage(
+                    prompt = req.prompt,
+                    model = PollinationsConfig.DEFAULT_MODEL,
+                    width = req.width,
+                    height = req.height
+                )
+            }
+        )
+        if (huggingFace.isConfigured) {
+            add(
+                RoutedModel(
+                    id = HuggingFaceConfig.IMAGE_MODEL_PRIMARY,
+                    media = MediaKind.IMAGE,
+                    promptAdherence = 4,
+                    photoreal = 5,
+                    supportsNegative = false
+                ) { req ->
+                    huggingFace.generateImage(
+                        prompt = req.prompt,
+                        width = req.width,
+                        height = req.height,
+                        negativePrompt = null,
+                        model = HuggingFaceConfig.IMAGE_MODEL_PRIMARY
                     )
                 }
-            }
-            MediaKind.VIDEO -> buildList {
-                add { req ->
-                    MediaBytes(
-                        pollinations.generateVideo(req.prompt, req.width, req.height),
-                        PollinationsConfig.VIDEO_MODEL
+            )
+            add(
+                RoutedModel(
+                    id = HuggingFaceConfig.IMAGE_MODEL_FALLBACK,
+                    media = MediaKind.IMAGE,
+                    promptAdherence = 3,
+                    photoreal = 4,
+                    supportsNegative = true
+                ) { req ->
+                    huggingFace.generateImage(
+                        prompt = req.prompt,
+                        width = req.width,
+                        height = req.height,
+                        negativePrompt = req.negativePrompt,
+                        model = HuggingFaceConfig.IMAGE_MODEL_FALLBACK
                     )
                 }
-                if (huggingFace.isConfigured) {
-                    add { req ->
-                        MediaBytes(
-                            huggingFace.generateVideo(req.prompt),
-                            HuggingFaceConfig.VIDEO_MODEL
-                        )
-                    }
-                }
+            )
+        }
+        add(
+            RoutedModel(
+                id = PollinationsConfig.VIDEO_MODEL,
+                media = MediaKind.VIDEO,
+                promptAdherence = 5,
+                photoreal = 5,
+                supportsNegative = false
+            ) { req ->
+                pollinations.generateVideo(req.prompt, req.width, req.height)
             }
+        )
+        if (huggingFace.isConfigured) {
+            add(
+                RoutedModel(
+                    id = HuggingFaceConfig.VIDEO_MODEL,
+                    media = MediaKind.VIDEO,
+                    promptAdherence = 2,
+                    photoreal = 3,
+                    supportsNegative = false
+                ) { req ->
+                    huggingFace.generateVideo(req.prompt)
+                }
+            )
         }
     }
+
+    private fun qualityOk(bytes: ByteArray, kind: MediaKind): Boolean =
+        if (kind == MediaKind.VIDEO) bytes.size >= 20_000 else bytes.size >= 8_000
 }

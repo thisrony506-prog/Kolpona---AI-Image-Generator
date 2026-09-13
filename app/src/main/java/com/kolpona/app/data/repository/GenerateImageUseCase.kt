@@ -41,16 +41,18 @@ class GenerateImageUseCase(
         }
 
         val generationId = UUID.randomUUID().toString()
-        val enhanced = enhancer.optimize(prompt, input.style, input.enhance, input.mediaType)
+        val optimized = enhancer.optimize(prompt, input.style, input.enhance, input.mediaType)
         val (width, height) = input.aspectRatio.dimensions(input.quality)
 
         val result = try {
             router.generate(
                 MediaRequest(
-                    prompt = enhanced,
+                    prompt = optimized.prompt,
                     mediaType = input.mediaType,
                     width = width,
-                    height = height
+                    height = height,
+                    negativePrompt = optimized.negativePrompt,
+                    scene = optimized.kind
                 )
             )
         } catch (e: GenerationException) {
@@ -67,7 +69,7 @@ class GenerateImageUseCase(
         val image = GeneratedImage(
             id = generationId,
             prompt = prompt,
-            enhancedPrompt = enhanced,
+            enhancedPrompt = optimized.prompt,
             styleId = input.style.id,
             aspectRatioId = input.aspectRatio.id,
             model = result.model,

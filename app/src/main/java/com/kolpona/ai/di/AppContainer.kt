@@ -2,6 +2,7 @@ package com.kolpona.ai.di
 
 import android.app.Application
 import com.kolpona.ai.ads.StartIoAdManager
+import com.kolpona.ai.data.auth.AuthRepository
 import com.kolpona.ai.data.api.AuthInterceptor
 import com.kolpona.ai.data.api.GenerationRouter
 import com.kolpona.ai.data.api.HuggingFaceApiService
@@ -30,6 +31,7 @@ class AppContainer(app: Application) {
     val historyRepository: HistoryRepository = HistoryRepository(database.generatedImageDao(), imageStore)
     val chatRepository: ChatRepository = ChatRepository(database.chatDao(), historyRepository)
     val networkMonitor: NetworkMonitor = NetworkMonitor(app)
+    val authRepository: AuthRepository = AuthRepository(app, networkMonitor)
     val imageSaver: ImageSaver = ImageSaver(app)
     val imageShare: ImageShare = ImageShare(app)
     val adManager: StartIoAdManager = StartIoAdManager(app)

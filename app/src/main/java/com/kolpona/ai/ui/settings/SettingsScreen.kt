@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -34,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -67,7 +67,10 @@ fun SettingsScreen(
     val style by viewModel.style.collectAsStateWithLifecycle()
     val aspect by viewModel.aspectRatio.collectAsStateWithLifecycle()
     val enhance by viewModel.enhance.collectAsStateWithLifecycle()
+    val accountEmail by viewModel.accountEmail.collectAsStateWithLifecycle()
+    val activity = LocalContext.current as android.app.Activity
     var confirmClear by rememberSaveable { mutableStateOf(false) }
+    var confirmLogout by rememberSaveable { mutableStateOf(false) }
     val chipColors = FilterChipDefaults.filterChipColors(
         selectedContainerColor = ElectricBlue,
         selectedLabelColor = Color.White,
@@ -96,6 +99,19 @@ fun SettingsScreen(
                     color = SoftWhite,
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold
+                )
+            }
+
+            GlassSection(stringResource(R.string.settings_account)) {
+                Text(
+                    text = accountEmail ?: stringResource(R.string.auth_signed_in),
+                    color = SoftWhite,
+                    style = MaterialTheme.typography.bodyLarge
+                )
+                Spacer(Modifier.height(8.dp))
+                SettingRow(
+                    title = stringResource(R.string.auth_logout),
+                    onClick = { confirmLogout = true }
                 )
             }
 
@@ -219,6 +235,27 @@ fun SettingsScreen(
             }
             Spacer(Modifier.height(24.dp))
         }
+    }
+
+    if (confirmLogout) {
+        AlertDialog(
+            onDismissRequest = { confirmLogout = false },
+            containerColor = Color(0xFF0E1424),
+            title = { Text(stringResource(R.string.auth_logout_title), color = SoftWhite) },
+            text = { Text(stringResource(R.string.auth_logout_body), color = MutedGray) },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.signOut(activity)
+                    confirmLogout = false
+                }) { Text(stringResource(R.string.auth_logout), color = ElectricBlue) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmLogout = false }) {
+                    Text(stringResource(R.string.cancel), color = MutedGray)
+                }
+            },
+            shape = RoundedCornerShape(24.dp)
+        )
     }
 
     if (confirmClear) {

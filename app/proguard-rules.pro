@@ -32,6 +32,14 @@
 # Play Services ads identifier (optional, used by some ad SDKs)
 -dontwarn com.google.android.gms.**
 
+# Firebase Auth + Google Sign-In
+-keep class com.google.firebase.** { *; }
+-keep class com.google.android.gms.** { *; }
+-keep class com.google.android.libraries.identity.** { *; }
+-keep class androidx.credentials.** { *; }
+-dontwarn com.google.firebase.**
+-dontwarn com.google.android.libraries.identity.**
+
 # DataStore
 -keep class androidx.datastore.** { *; }
 

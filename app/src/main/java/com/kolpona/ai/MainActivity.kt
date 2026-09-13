@@ -21,6 +21,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import com.kolpona.ai.domain.model.ThemeMode
+import com.kolpona.ai.ui.auth.AuthNav
 import com.kolpona.ai.ui.components.KolponaMark
 import com.kolpona.ai.ui.components.StudioBackdrop
 import com.kolpona.ai.ui.navigation.KolponaNav
@@ -41,6 +42,8 @@ class MainActivity : ComponentActivity() {
                 .collectAsStateWithLifecycle(initialValue = ThemeMode.SYSTEM)
             val updateState by app.container.updateManager.state
                 .collectAsStateWithLifecycle()
+            val currentUser by app.container.authRepository.user
+                .collectAsStateWithLifecycle(initialValue = app.container.authRepository.currentUser)
             var ready by remember { mutableStateOf(false) }
             var showOnboarding by remember { mutableStateOf(true) }
             var gateOpen by remember { mutableStateOf(false) }
@@ -83,6 +86,7 @@ class MainActivity : ComponentActivity() {
                             KolponaMark(size = 72.dp)
                         }
                     }
+                    currentUser == null -> AuthNav(onSignedIn = { })
                     else -> KolponaNav(
                         showOnboarding = showOnboarding,
                         onOnboardingFinished = {

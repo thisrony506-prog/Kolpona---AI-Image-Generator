@@ -3,6 +3,7 @@ package com.kolpona.ai
 import android.app.Application
 import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.lifecycle.lifecycleScope
+import com.google.firebase.FirebaseApp
 import com.kolpona.ai.di.AppContainer
 import kotlinx.coroutines.launch
 
@@ -12,6 +13,7 @@ class KolponaApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        runCatching { FirebaseApp.initializeApp(this) }
         container = AppContainer(this)
         container.adManager.initialize()
         ProcessLifecycleOwner.get().lifecycleScope.launch {

@@ -83,8 +83,8 @@ class HomeViewModel(
     private val creditManager: CreditManager,
     private val preferences: AppPreferences,
     private val history: HistoryRepository,
-    private val saver: com.kolpona.app.utils.ImageSaver,
-    private val share: com.kolpona.app.utils.ImageShare,
+    private val imageSaver: ImageSaver,
+    private val imageShare: ImageShare,
     val adManager: StartIoAdManager
 ) : ViewModel() {
 
@@ -225,12 +225,27 @@ class HomeViewModel(
         _state.update { it.copy(watchingAd = watching) }
     }
 
+    fun download(image: GeneratedImage) {
+        viewModelScope.launch {
+            runCatching {
+                imageSaver.saveToGallery(image.localPath, "Kolpona_${image.id.take(8)}.jpg")
+            }.onSuccess { _events.emit(HomeEvent.Saved) }
+                .onFailure { _events.emit(HomeEvent.SaveFailed) }
+        }
+    }
+
+    fun share(image: GeneratedImage, title: String) {
+        viewModelScope.launch { imageShare.share(image.localPath, title) }
+    }
+
     companion object {
         fun create(container: AppContainer) = HomeViewModel(
             generateImage = container.generateImageUseCase,
             creditManager = container.creditManager,
             preferences = container.preferences,
             history = container.historyRepository,
+            imageSaver = container.imageSaver,
+            imageShare = container.imageShare,
             adManager = container.adManager
         )
     }

@@ -134,12 +134,17 @@
     <string name="error_generic">Something went wrong. Please try again.</string>
     <string name="error_video">Video isn\'t available right now. Try Image, or try again later.</string>
 
-    <string name="onboarding_1_title">Chat</string>
-    <string name="onboarding_1_body">Talk to Kolpona like ChatGPT or Gemini. Type what you imagine.</string>
-    <string name="onboarding_2_title">Create</string>
-    <string name="onboarding_2_body">Every message becomes an AI-generated image or video in the conversation.</string>
-    <string name="onboarding_3_title">Explore</string>
-    <string name="onboarding_3_body">Save, share, and earn extra credits by watching a short video.</string>
+    <string name="onboarding_1_title">Imagination</string>
+    <string name="onboarding_1_quote_1">Unleash your imagination. Chat naturally with Kolpona and watch your ideas come to life.</string>
+    <string name="onboarding_1_quote_2">Where words meet magic. Type what you imagine, and let Kolpona handle the rest.</string>
+    <string name="onboarding_1_quote_3">Your thoughts, our canvas. Converse with Kolpona to turn your imagination into reality.</string>
+    <string name="onboarding_2_title">Companion</string>
+    <string name="onboarding_2_quote_1">Meet your new creative companion. Talk to Kolpona, share your thoughts, and start creating.</string>
+    <string name="onboarding_2_quote_2">Experience smart and creative conversations. Just type your ideas and let Kolpona do the magic.</string>
+    <string name="onboarding_2_quote_3">Have a smart conversation. Share your ideas with Kolpona and explore endless possibilities.</string>
+    <string name="onboarding_3_title">Ideas</string>
+    <string name="onboarding_3_quote_1">Chat with your imagination. Type your thoughts and let Kolpona create the magic.</string>
+    <string name="onboarding_3_quote_2">Beyond just text. Talk to Kolpona and bring your boldest ideas to life.</string>
     <string name="start_creating">Start Creating</string>
     <string name="next">Next</string>
     <string name="skip">Skip</string>

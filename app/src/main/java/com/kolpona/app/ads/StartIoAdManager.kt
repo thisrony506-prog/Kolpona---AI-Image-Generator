@@ -123,10 +123,15 @@ class StartIoAdManager(
         }
 
         try {
-            val videoListenerClass = firstClass(
-                "com.startapp.sdk.adsbase.VideoListener",
-                "com.startapp.sdk.adsbase.adlisteners.VideoListener"
-            ) ?: return onUnavailable().also { preload(activity) }
+            val videoListenerClass = runCatching {
+                Class.forName("com.startapp.sdk.adsbase.VideoListener")
+            }.recoverCatching {
+                Class.forName("com.startapp.sdk.adsbase.adlisteners.VideoListener")
+            }.getOrNull() ?: run {
+                onUnavailable()
+                preload(activity)
+                return
+            }
             val videoListener = Proxy.newProxyInstance(
                 videoListenerClass.classLoader,
                 arrayOf(videoListenerClass)

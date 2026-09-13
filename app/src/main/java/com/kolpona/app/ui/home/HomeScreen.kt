@@ -1,10 +1,7 @@
 package com.kolpona.app.ui.home
 
 import android.app.Activity
-import android.os.Build
 import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -179,9 +176,9 @@ fun HomeScreen(
             modifier = Modifier.align(Alignment.CenterHorizontally)
         )
 
-        if (state.error != null) {
+        state.error?.let { generationError ->
             Spacer(Modifier.height(12.dp))
-            ErrorCard(error = state.error, onRetry = viewModel::retry)
+            ErrorCard(error = generationError, onRetry = viewModel::retry)
         }
 
         Spacer(Modifier.height(20.dp))

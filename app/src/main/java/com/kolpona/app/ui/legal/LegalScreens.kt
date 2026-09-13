@@ -33,7 +33,7 @@ fun LegalScaffold(
             title = { Text(title) },
             navigationIcon = {
                 IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = stringResource(R.string.back))
+                    Icon(Icons.Outlined.ArrowBack, contentDescription = stringResource(R.string.back))
                 }
             },
             colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)

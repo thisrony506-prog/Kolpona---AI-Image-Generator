@@ -24,6 +24,15 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Install Android platform 35
+        run: |
+          set -e
+          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT}"
+          echo "ANDROID_HOME=${ANDROID_HOME}"
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME}}"
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+
       - name: Write local.properties
         env:
           POLLINATIONS_API_KEY: ${{ secrets.POLLINATIONS_API_KEY }}
@@ -33,12 +42,23 @@ jobs:
             echo "sdk.dir=${SDK_PATH}"
             echo "POLLINATIONS_API_KEY=${POLLINATIONS_API_KEY}"
           } > local.properties
+          echo "local.properties sdk.dir=$(grep sdk.dir local.properties)"
 
       - name: Make Gradle wrapper executable
         run: chmod +x gradlew
 
       - name: Build Release APK
-        run: ./gradlew assembleRelease --stacktrace --no-daemon
+        run: |
+          set -o pipefail
+          ./gradlew assembleRelease --stacktrace --no-daemon --warning-mode all | tee gradle-build.log
+
+      - name: Upload Gradle log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gradle-build-log
+          path: gradle-build.log
+          if-no-files-found: ignore
 
       - name: Upload Release APK
         uses: actions/upload-artifact@v4

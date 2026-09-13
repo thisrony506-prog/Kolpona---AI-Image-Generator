@@ -143,6 +143,6 @@ dependencies {
 
     implementation("io.coil-kt:coil-compose:2.7.0")
 
-    // noinspection GradleDynamicVersion
-    implementation("com.startapp:inapp-sdk:5.+")
+    // Start.io InApp SDK 5.x (user-requested 5.+ line; pinned for reproducible CI)
+    implementation("com.startapp:inapp-sdk:5.2.5")
 }

@@ -28,6 +28,7 @@
         android:theme="@style/Theme.Kolpona"
         android:networkSecurityConfig="@xml/network_security_config"
         android:enableOnBackInvokedCallback="true"
+        tools:replace="android:allowBackup,android:fullBackupContent,android:dataExtractionRules,android:networkSecurityConfig,android:theme"
         tools:targetApi="35">
 
         <activity

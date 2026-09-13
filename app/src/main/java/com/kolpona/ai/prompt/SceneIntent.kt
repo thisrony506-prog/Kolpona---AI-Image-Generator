@@ -31,10 +31,12 @@ data class SceneIntent(
             val colors = COLOR_WORDS.filter { text.contains(it) }
             val kind = when {
                 containsAny(text, "anime", "manga") -> SceneKind.ANIME
-                containsAny(text, "pant", "shirt", "shoe", "watch", "bag", "product", "bottle") &&
+                containsAny(
+                    text, "pant", "pants", "shirt", "shoe", "dress", "sari", "lungi", "panjabi",
+                    "kameez", "kurta", "fashion", "jacket", "jeans", "clothing", "suit", "hoodie"
+                ) -> SceneKind.FASHION
+                containsAny(text, "watch", "bag", "product", "bottle") &&
                     !containsAny(text, "wearing", "girl", "woman", "man", "boy") -> SceneKind.PRODUCT
-                containsAny(text, "sari", "lungi", "panjabi", "fashion", "dress", "kameez", "clothing") &&
-                    containsAny(text, "product", "studio catalog") -> SceneKind.FASHION
                 containsAny(
                     text, "woman", "man", "girl", "boy", "person", "people", "face", "portrait",
                     "মাইয়া", "মেয়ে", "মহিলা", "পুরুষ", "ছেলে", "পোলা", "ladki", "ladka", "mujer", "homme"

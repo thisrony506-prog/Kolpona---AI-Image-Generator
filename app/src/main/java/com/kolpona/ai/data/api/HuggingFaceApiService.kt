@@ -50,7 +50,8 @@ class HuggingFaceApiService(
             width = w,
             height = h,
             negativePrompt = negativePrompt,
-            steps = 28
+            steps = HuggingFaceConfig.IMAGE_STEPS,
+            guidance = HuggingFaceConfig.IMAGE_GUIDANCE
         )
     }
 
@@ -167,9 +168,10 @@ class HuggingFaceApiService(
         width: Int?,
         height: Int?,
         negativePrompt: String?,
-        steps: Int?
+        steps: Int?,
+        guidance: Double? = null
     ): ByteArray {
-        val rich = buildInputJson(prompt, width, height, negativePrompt, steps)
+        val rich = buildInputJson(prompt, width, height, negativePrompt, steps, guidance)
         val simple = buildInputJson(prompt, null, null, null, null)
         val media = "application/json; charset=utf-8".toMediaType()
         val urls = listOf(
@@ -364,8 +366,12 @@ class HuggingFaceApiService(
         val promptOnly = """{"prompt":"$quoted"}"""
         val inputsOnly = """{"inputs":"$quoted"}"""
         val params = buildList {
-            add("\"num_frames\":25")
-            add("\"num_inference_steps\":8")
+            add("\"num_frames\":${HuggingFaceConfig.VIDEO_FRAMES}")
+            add("\"num_inference_steps\":${HuggingFaceConfig.VIDEO_STEPS}")
+            add("\"guidance_scale\":${HuggingFaceConfig.VIDEO_GUIDANCE}")
+            add("\"fps\":${HuggingFaceConfig.VIDEO_FPS}")
+            add("\"frames_per_second\":${HuggingFaceConfig.VIDEO_FPS}")
+            add("\"motion_bucket_id\":${HuggingFaceConfig.VIDEO_MOTION_BUCKET}")
             if (width != null && height != null) {
                 add("\"width\":$width")
                 add("\"height\":$height")
@@ -381,10 +387,16 @@ class HuggingFaceApiService(
                 append(if (landscape) "16:9" else "9:16")
                 append('"')
             }
+            append(",\"num_frames\":${HuggingFaceConfig.VIDEO_FRAMES}")
+            append(",\"frames_per_second\":${HuggingFaceConfig.VIDEO_FPS}")
+            append(",\"num_inference_steps\":${HuggingFaceConfig.VIDEO_STEPS}")
+            append(",\"guidance_scale\":${HuggingFaceConfig.VIDEO_GUIDANCE}")
+            append(",\"motion_bucket_id\":${HuggingFaceConfig.VIDEO_MOTION_BUCKET}")
             append(",\"duration\":5")
+            if (negative != null) append(",\"negative_prompt\":\"$negative\"")
             append('}')
         }
-        return listOf(promptOnly, inputsOnly, richPrompt).distinct()
+        return listOf(richPrompt, richInputs, promptOnly, inputsOnly).distinct()
     }
 
     private fun buildInputJson(
@@ -392,7 +404,8 @@ class HuggingFaceApiService(
         width: Int?,
         height: Int?,
         negativePrompt: String?,
-        steps: Int?
+        steps: Int?,
+        guidance: Double? = null
     ): String {
         val quoted = jsonEscape(prompt.take(1400))
         val params = buildList {
@@ -404,6 +417,7 @@ class HuggingFaceApiService(
                 add("\"negative_prompt\":\"${jsonEscape(negativePrompt.take(500))}\"")
             }
             if (steps != null) add("\"num_inference_steps\":$steps")
+            if (guidance != null) add("\"guidance_scale\":$guidance")
         }
         return if (params.isEmpty()) {
             """{"inputs":"$quoted"}"""
@@ -413,7 +427,7 @@ class HuggingFaceApiService(
     }
 
     private fun fit(width: Int, height: Int): Pair<Int, Int> {
-        val maxSide = 1024
+        val maxSide = 1280
         val scale = maxOf(width, height).toFloat() / maxSide
         val w = if (scale > 1f) (width / scale).toInt() else width
         val h = if (scale > 1f) (height / scale).toInt() else height

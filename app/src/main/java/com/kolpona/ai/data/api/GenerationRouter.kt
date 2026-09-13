@@ -73,6 +73,15 @@ class GenerationRouter(
             }
         }
 
+        start("flux-2-klein", huggingFace.isConfigured) {
+            huggingFace.generateImage(
+                prompt = request.prompt,
+                width = request.width,
+                height = request.height,
+                negativePrompt = request.negativePrompt,
+                model = HuggingFaceConfig.IMAGE_MODEL_KLEIN
+            )
+        }
         start("flux-1-dev", huggingFace.isConfigured) {
             huggingFace.generateImage(
                 prompt = request.prompt,

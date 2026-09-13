@@ -195,31 +195,25 @@ fun HomeScreen(
         viewModel.send()
     }
 
-    fun launchVoice() {
-        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
-            putExtra(RecognizerIntent.EXTRA_PROMPT, context.getString(R.string.voice_prompt))
-            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
-        }
-        try {
-            voiceLauncher.launch(intent)
-        } catch (_: ActivityNotFoundException) {
-            Toast.makeText(context, context.getString(R.string.voice_unavailable), Toast.LENGTH_LONG).show()
-        }
-    }
-
-    val audioPermission = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (granted) launchVoice()
-        else Toast.makeText(context, context.getString(R.string.voice_unavailable), Toast.LENGTH_LONG).show()
-    }
-
     fun startVoice() {
         val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
             PackageManager.PERMISSION_GRANTED
-        if (granted) launchVoice() else audioPermission.launch(Manifest.permission.RECORD_AUDIO)
+        if (granted) {
+            try {
+                voiceLauncher.launch(
+                    Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                        putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                        putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+                        putExtra(RecognizerIntent.EXTRA_PROMPT, context.getString(R.string.voice_prompt))
+                        putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+                    }
+                )
+            } catch (_: ActivityNotFoundException) {
+                Toast.makeText(context, context.getString(R.string.voice_unavailable), Toast.LENGTH_LONG).show()
+            }
+        } else {
+            audioPermission.launch(Manifest.permission.RECORD_AUDIO)
+        }
     }
 
     Column(

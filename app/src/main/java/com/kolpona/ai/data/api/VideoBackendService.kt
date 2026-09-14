@@ -100,7 +100,7 @@ class VideoBackendService(
             if (bytes.size < 4_000 || !MediaPayload.looksLikeVideo(bytes)) {
                 throw GenerationException(GenerationError.VIDEO_UNAVAILABLE)
             }
-            return MediaBytes(bytes, json.optString("model").ifBlank { "wan-t2v" })
+            return MediaBytes(bytes, json?.optString("model").orEmpty().ifBlank { "wan-t2v" })
         } catch (e: GenerationException) {
             throw e
         } catch (_: SocketTimeoutException) {

@@ -3,6 +3,7 @@ package com.kolpona.ai.ui.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.kolpona.ai.ads.StartIoAdManager
+import com.kolpona.ai.data.cloud.UserSessionSync
 import com.kolpona.ai.data.database.ChatSessionEntity
 import com.kolpona.ai.data.prefs.AppPreferences
 import com.kolpona.ai.data.repository.ChatRepository
@@ -49,7 +50,8 @@ data class HomeUiState(
     val messages: List<ChatItem> = emptyList(),
     val lastPrompt: String = "",
     val sessionId: String = "",
-    val sessions: List<ChatSessionEntity> = emptyList()
+    val sessions: List<ChatSessionEntity> = emptyList(),
+    val refreshing: Boolean = false
 )
 
 sealed class ChatItem {
@@ -69,6 +71,8 @@ sealed class HomeEvent {
     data object ShowInterstitial : HomeEvent()
     data object Saved : HomeEvent()
     data object SaveFailed : HomeEvent()
+    data object Refreshed : HomeEvent()
+    data object RefreshFailed : HomeEvent()
 }
 
 class HomeViewModel(
@@ -78,6 +82,7 @@ class HomeViewModel(
     private val imageSaver: ImageSaver,
     private val imageShare: ImageShare,
     private val chats: ChatRepository,
+    private val sessionSync: UserSessionSync,
     val adManager: StartIoAdManager
 ) : ViewModel() {
 
@@ -121,6 +126,22 @@ class HomeViewModel(
             _state.update {
                 it.copy(sessionId = session.id, messages = messages, lastPrompt = lastPrompt)
             }
+        }
+    }
+
+    fun refresh() {
+        if (_state.value.refreshing || _state.value.isGenerating) return
+        viewModelScope.launch {
+            _state.update { it.copy(refreshing = true) }
+            val ok = runCatching { sessionSync.refresh() }.getOrDefault(false)
+            creditManager.refreshDailyCredits()
+            val id = _state.value.sessionId
+            if (id.isNotBlank()) {
+                val (messages, lastPrompt) = chats.loadMessages(id)
+                _state.update { it.copy(messages = messages, lastPrompt = lastPrompt) }
+            }
+            _state.update { it.copy(refreshing = false) }
+            _events.emit(if (ok) HomeEvent.Refreshed else HomeEvent.RefreshFailed)
         }
     }
 
@@ -378,6 +399,7 @@ class HomeViewModel(
             imageSaver = container.imageSaver,
             imageShare = container.imageShare,
             chats = container.chatRepository,
+            sessionSync = container.userSessionSync,
             adManager = container.adManager
         )
     }

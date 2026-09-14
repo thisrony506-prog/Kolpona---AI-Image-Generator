@@ -93,6 +93,9 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -242,6 +245,8 @@ fun HomeScreen(
                 HomeEvent.ShowInterstitial -> activity?.let { viewModel.adManager.showInterstitial(it) }
                 HomeEvent.Saved -> Toast.makeText(context, context.getString(R.string.image_saved), Toast.LENGTH_SHORT).show()
                 HomeEvent.SaveFailed -> Toast.makeText(context, context.getString(R.string.error_save), Toast.LENGTH_SHORT).show()
+                HomeEvent.Refreshed -> Toast.makeText(context, context.getString(R.string.refreshed), Toast.LENGTH_SHORT).show()
+                HomeEvent.RefreshFailed -> Toast.makeText(context, context.getString(R.string.error_network), Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -287,48 +292,67 @@ fun HomeScreen(
                 onNewChat = viewModel::newChat
             )
 
-            if (state.messages.isEmpty()) {
-                EmptyStudio(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                )
-            } else {
+            val pullState = rememberPullToRefreshState()
+            PullToRefreshBox(
+                isRefreshing = state.refreshing,
+                onRefresh = { if (!state.isGenerating) viewModel.refresh() },
+                state = pullState,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                indicator = {
+                    PullToRefreshDefaults.Indicator(
+                        modifier = Modifier.align(Alignment.TopCenter),
+                        isRefreshing = state.refreshing,
+                        state = pullState,
+                        color = ElectricBlue,
+                        containerColor = GlassFill
+                    )
+                }
+            ) {
                 LazyColumn(
                     state = listState,
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth(),
+                    modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    verticalArrangement = if (state.messages.isEmpty()) {
+                        Arrangement.Center
+                    } else {
+                        Arrangement.spacedBy(12.dp)
+                    }
                 ) {
-                    items(state.messages, key = { it.key }) { item ->
-                        when (item) {
-                            is ChatItem.User -> UserBubble(item.text)
-                            is ChatItem.AssistantText -> AssistantTextBubble(item.text)
-                            is ChatItem.Image -> ResultCard(
-                                image = item.image,
-                                onOpen = { onOpenImage(item.image.id) },
-                                onDownload = {
-                                    if (Build.VERSION.SDK_INT < 29) {
-                                        storagePermission.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
-                                    }
-                                    viewModel.download(item.image)
-                                },
-                                onShare = { viewModel.share(item.image, context.getString(R.string.share_image)) },
-                                onRegenerate = { viewModel.regenerate(item.image) },
-                                onCopy = {
-                                    val clipboard = context.getSystemService(ClipboardManager::class.java)
-                                    clipboard?.setPrimaryClip(ClipData.newPlainText("prompt", item.image.prompt))
-                                    Toast.makeText(context, context.getString(R.string.prompt_copied), Toast.LENGTH_SHORT).show()
-                                },
-                                enabled = !state.isGenerating
-                            )
-                            is ChatItem.Pending -> GeneratingCard(
-                                video = state.mediaType == MediaKind.VIDEO,
-                                aspect = state.aspectRatio
-                            )
-                            is ChatItem.Error -> ErrorBubble(error = item.error, onRetry = viewModel::retry)
+                    if (state.messages.isEmpty()) {
+                        item(key = "empty-studio") {
+                            EmptyStudio(Modifier.fillParentMaxHeight())
+                        }
+                    } else {
+                        items(state.messages, key = { it.key }) { item ->
+                            when (item) {
+                                is ChatItem.User -> UserBubble(item.text)
+                                is ChatItem.AssistantText -> AssistantTextBubble(item.text)
+                                is ChatItem.Image -> ResultCard(
+                                    image = item.image,
+                                    onOpen = { onOpenImage(item.image.id) },
+                                    onDownload = {
+                                        if (Build.VERSION.SDK_INT < 29) {
+                                            storagePermission.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                                        }
+                                        viewModel.download(item.image)
+                                    },
+                                    onShare = { viewModel.share(item.image, context.getString(R.string.share_image)) },
+                                    onRegenerate = { viewModel.regenerate(item.image) },
+                                    onCopy = {
+                                        val clipboard = context.getSystemService(ClipboardManager::class.java)
+                                        clipboard?.setPrimaryClip(ClipData.newPlainText("prompt", item.image.prompt))
+                                        Toast.makeText(context, context.getString(R.string.prompt_copied), Toast.LENGTH_SHORT).show()
+                                    },
+                                    enabled = !state.isGenerating
+                                )
+                                is ChatItem.Pending -> GeneratingCard(
+                                    video = state.mediaType == MediaKind.VIDEO,
+                                    aspect = state.aspectRatio
+                                )
+                                is ChatItem.Error -> ErrorBubble(error = item.error, onRetry = viewModel::retry)
+                            }
                         }
                     }
                 }

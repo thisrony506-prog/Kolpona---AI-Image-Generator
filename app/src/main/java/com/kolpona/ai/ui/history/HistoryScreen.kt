@@ -19,14 +19,20 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.Videocam
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -65,6 +71,7 @@ import java.time.format.DateTimeFormatter
 private val historyDateFormat: DateTimeFormatter =
     DateTimeFormatter.ofPattern("MMM d, yyyy · h:mm a")
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HistoryScreen(
     viewModel: HistoryViewModel,
@@ -73,7 +80,9 @@ fun HistoryScreen(
     modifier: Modifier = Modifier
 ) {
     val images by viewModel.images.collectAsStateWithLifecycle()
+    val refreshing by viewModel.refreshing.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val pullState = rememberPullToRefreshState()
 
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
@@ -82,6 +91,8 @@ fun HistoryScreen(
                 HistoryEvent.SaveFailed -> Toast.makeText(context, context.getString(R.string.error_save), Toast.LENGTH_SHORT).show()
                 is HistoryEvent.Regenerated -> onOpenImage(event.imageId)
                 is HistoryEvent.GenerateFailed -> Unit
+                HistoryEvent.Refreshed -> Toast.makeText(context, context.getString(R.string.refreshed), Toast.LENGTH_SHORT).show()
+                HistoryEvent.RefreshFailed -> Toast.makeText(context, context.getString(R.string.error_network), Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -104,26 +115,43 @@ fun HistoryScreen(
                     fontWeight = FontWeight.Bold
                 )
             }
-            if (images.isEmpty()) {
-                EmptyHistory(
-                    onCreateFirst = onCreateFirst,
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                )
-            } else {
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(2),
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    contentPadding = PaddingValues(bottom = 16.dp)
-                ) {
-                    items(images, key = { it.id }) { image ->
-                        HistoryCard(image = image, onClick = { onOpenImage(image.id) })
+            PullToRefreshBox(
+                isRefreshing = refreshing,
+                onRefresh = viewModel::refresh,
+                state = pullState,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                indicator = {
+                    PullToRefreshDefaults.Indicator(
+                        modifier = Modifier.align(Alignment.TopCenter),
+                        isRefreshing = refreshing,
+                        state = pullState,
+                        color = ElectricBlue,
+                        containerColor = GlassFill
+                    )
+                }
+            ) {
+                if (images.isEmpty()) {
+                    EmptyHistory(
+                        onCreateFirst = onCreateFirst,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState())
+                    )
+                } else {
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(2),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        contentPadding = PaddingValues(bottom = 16.dp)
+                    ) {
+                        items(images, key = { it.id }) { image ->
+                            HistoryCard(image = image, onClick = { onOpenImage(image.id) })
+                        }
                     }
                 }
             }

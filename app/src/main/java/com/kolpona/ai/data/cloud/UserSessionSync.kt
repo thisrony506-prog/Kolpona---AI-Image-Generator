@@ -58,17 +58,29 @@ class UserSessionSync(
         }
     }
 
+    suspend fun refresh(): Boolean {
+        val user = auth.currentUser ?: return true
+        attach(user)
+        return runCatching {
+            sync(user)
+            true
+        }.getOrDefault(false)
+    }
+
     private suspend fun bind(user: FirebaseUser) {
-        mutex.withLock {
-            if (boundUid == user.uid) return
-            history.setOwnerUid(user.uid)
-            chats.setOwnerUid(user.uid)
-            preferences.setActiveUid(user.uid)
-            history.claimOrphans(user.uid)
-            chats.claimOrphans(user.uid)
-            boundUid = user.uid
-        }
-        runCatching { sync(user) }
+        val first = attach(user)
+        if (first) runCatching { sync(user) }
+    }
+
+    private suspend fun attach(user: FirebaseUser): Boolean = mutex.withLock {
+        if (boundUid == user.uid) return@withLock false
+        history.setOwnerUid(user.uid)
+        chats.setOwnerUid(user.uid)
+        preferences.setActiveUid(user.uid)
+        history.claimOrphans(user.uid)
+        chats.claimOrphans(user.uid)
+        boundUid = user.uid
+        true
     }
 
     private suspend fun sync(user: FirebaseUser) {
@@ -87,12 +99,9 @@ class UserSessionSync(
             user.uid,
             CloudWallet(preferences.getCredits(), preferences.getLastResetEpochDay())
         )
-        if (profile.existed) {
-            cloud.pullHistory(user.uid).forEach { history.insertLocal(it) }
-            cloud.pullChats(user.uid).forEach { chats.replaceFromCloud(it.session, it.messages) }
-        } else {
-            pushLocal(user.uid)
-        }
+        cloud.pullHistory(user.uid).forEach { history.insertLocal(it) }
+        cloud.pullChats(user.uid).forEach { chats.replaceFromCloud(it.session, it.messages) }
+        if (!profile.existed) pushLocal(user.uid)
     }
 
     private suspend fun pushLocal(uid: String) {

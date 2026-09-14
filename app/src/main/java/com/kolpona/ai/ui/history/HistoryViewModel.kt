@@ -2,6 +2,7 @@ package com.kolpona.ai.ui.history
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.kolpona.ai.data.cloud.UserSessionSync
 import com.kolpona.ai.data.prefs.AppPreferences
 import com.kolpona.ai.data.repository.GenerateImageUseCase
 import com.kolpona.ai.data.repository.HistoryRepository
@@ -31,6 +32,8 @@ sealed class HistoryEvent {
     data object SaveFailed : HistoryEvent()
     data class Regenerated(val imageId: String) : HistoryEvent()
     data class GenerateFailed(val error: GenerationError) : HistoryEvent()
+    data object Refreshed : HistoryEvent()
+    data object RefreshFailed : HistoryEvent()
 }
 
 class HistoryViewModel(
@@ -38,7 +41,8 @@ class HistoryViewModel(
     private val generateImage: GenerateImageUseCase,
     private val preferences: AppPreferences,
     private val saver: ImageSaver,
-    private val share: ImageShare
+    private val share: ImageShare,
+    private val sessionSync: UserSessionSync
 ) : ViewModel() {
 
     val images: StateFlow<List<GeneratedImage>> = history.observeAll()
@@ -47,8 +51,21 @@ class HistoryViewModel(
     private val _generating = MutableStateFlow(false)
     val generating: StateFlow<Boolean> = _generating.asStateFlow()
 
+    private val _refreshing = MutableStateFlow(false)
+    val refreshing: StateFlow<Boolean> = _refreshing.asStateFlow()
+
     private val _events = MutableSharedFlow<HistoryEvent>(extraBufferCapacity = 4)
     val events: SharedFlow<HistoryEvent> = _events.asSharedFlow()
+
+    fun refresh() {
+        if (_refreshing.value) return
+        viewModelScope.launch {
+            _refreshing.value = true
+            val ok = runCatching { sessionSync.refresh() }.getOrDefault(false)
+            _refreshing.value = false
+            _events.emit(if (ok) HistoryEvent.Refreshed else HistoryEvent.RefreshFailed)
+        }
+    }
 
     fun delete(image: GeneratedImage) {
         viewModelScope.launch { history.delete(image) }
@@ -101,7 +118,8 @@ class HistoryViewModel(
             generateImage = container.generateImageUseCase,
             preferences = container.preferences,
             saver = container.imageSaver,
-            share = container.imageShare
+            share = container.imageShare,
+            sessionSync = container.userSessionSync
         )
     }
 }

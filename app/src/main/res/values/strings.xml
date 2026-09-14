@@ -158,6 +158,16 @@
     <string name="settings_title">Settings</string>
     <string name="settings_appearance">Appearance</string>
     <string name="settings_generation">Generation</string>
+    <string name="settings_studio">Studio defaults</string>
+    <string name="settings_studio_body">These apply the next time you generate from Chat.</string>
+    <string name="settings_look">Look</string>
+    <string name="settings_synced">Saved to your account</string>
+    <string name="settings_pull_hint">Pull down to refresh</string>
+    <string name="settings_clear_body">Remove every saved image and video on this device.</string>
+    <string name="refreshed">Updated</string>
+    <string name="quality_standard_hint">Faster</string>
+    <string name="quality_high_hint">Balanced</string>
+    <string name="quality_ultra_hint">Max detail</string>
     <string name="settings_credits">Credits</string>
     <string name="settings_data">Data</string>
     <string name="settings_about">About</string>

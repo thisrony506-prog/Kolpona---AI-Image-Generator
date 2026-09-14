@@ -97,15 +97,45 @@ fun AboutScreen(onBack: () -> Unit) {
             modifier = Modifier.padding(top = 8.dp, bottom = 16.dp)
         )
         Text(
-            text = stringResource(R.string.version_format, BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            text = stringResource(R.string.about_intro),
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface
         )
         Text(
-            text = "Images are generated with Hugging Face FLUX.1-dev and Cloudflare FLUX.1-schnell. Optional extra credits come from Start.io rewarded videos.",
+            text = "•  " + stringResource(R.string.about_feature_create),
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 16.dp)
+        )
+        Text(
+            text = "•  " + stringResource(R.string.about_feature_unlimited),
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 8.dp)
+        )
+        Text(
+            text = "•  " + stringResource(R.string.about_feature_languages),
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 8.dp)
+        )
+        Text(
+            text = "•  " + stringResource(R.string.about_feature_voice),
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 8.dp)
+        )
+        Text(
+            text = "•  " + stringResource(R.string.about_feature_history),
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 8.dp)
+        )
+        Text(
+            text = stringResource(R.string.version_format, BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 24.dp)
         )
     }
 }

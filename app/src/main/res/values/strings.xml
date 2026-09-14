@@ -194,6 +194,12 @@
     <string name="privacy_policy">Privacy Policy</string>
     <string name="terms_of_use">Terms of Use</string>
     <string name="about_kolpona">About Kolpona</string>
+    <string name="about_intro">Kolpona is your AI studio. Type an idea in chat and turn it into a photo or a video — in any language, from any country.</string>
+    <string name="about_feature_create">Create photos and videos from one prompt</string>
+    <string name="about_feature_unlimited">Keep creating — every idea can become an image or a clip</string>
+    <string name="about_feature_languages">Understands Bangla, English, Hindi, Arabic, mixed speech, dialects, and everyday slang</string>
+    <string name="about_feature_voice">Talk, pick a ratio or style, then send — chat stays in your own words</string>
+    <string name="about_feature_history">Creations save to History and to your Kolpona account</string>
     <string name="developer_note">Credit amounts are set by the app and can\'t be changed here.</string>
     <string name="version_format">Version %1$s (%2$d)</string>
 

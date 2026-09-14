@@ -82,6 +82,9 @@ object MediaPayload {
         json.optJSONObject("urls")?.optString("get")
             ?.takeIf { it.startsWith("http") }
             ?.let { return it }
+        json.optJSONObject("data")?.optJSONObject("urls")?.optString("get")
+            ?.takeIf { it.startsWith("http") }
+            ?.let { return it }
         val status = json.optString("status").lowercase()
         val requestId = json.optString("request_id").ifBlank { json.optString("requestId") }
         if ((status.contains("queue") || status.contains("in_progress") || status == "pending" ||
@@ -107,17 +110,21 @@ object MediaPayload {
         val lower = url.lowercase()
         if (lower.contains("/status") || lower.contains("/cancel")) return false
         if (lower.contains("queue.fal.run") && !lower.contains(".mp4")) return false
+        if (lower.contains("/status") || lower.contains("/cancel")) return false
         return lower.contains(".mp4") ||
             lower.contains(".webm") ||
             lower.contains("fal.media") ||
             lower.contains("cdn.fal.ai") ||
+            lower.contains("falserverless") ||
             lower.contains("replicate.delivery") ||
             lower.contains("wavespeed")
     }
 
     fun queueDone(text: String): Boolean {
         val json = runCatching { JSONObject(text.trim()) }.getOrNull() ?: return false
-        val status = json.optString("status").lowercase()
+        val status = json.optString("status").ifBlank {
+            json.optJSONObject("data")?.optString("status").orEmpty()
+        }.lowercase()
         return status == "completed" ||
             status == "complete" ||
             status == "succeeded" ||
@@ -127,7 +134,9 @@ object MediaPayload {
 
     fun queueFailed(text: String): Boolean {
         val json = runCatching { JSONObject(text.trim()) }.getOrNull() ?: return false
-        val status = json.optString("status").lowercase()
+        val status = json.optString("status").ifBlank {
+            json.optJSONObject("data")?.optString("status").orEmpty()
+        }.lowercase()
         return status == "failed" || status == "error" || status == "cancelled"
     }
 
@@ -199,6 +208,8 @@ object MediaPayload {
         json.optJSONArray("output")?.let { array -> urlFromArray(array)?.let { return it } }
         json.optJSONObject("result")?.let { child -> urlFromJson(child)?.let { return it } }
         json.optJSONObject("response")?.let { child -> urlFromJson(child)?.let { return it } }
+        json.optJSONObject("data")?.let { child -> urlFromJson(child)?.let { return it } }
+        json.optJSONArray("outputs")?.let { array -> urlFromArray(array)?.let { return it } }
         return null
     }
 

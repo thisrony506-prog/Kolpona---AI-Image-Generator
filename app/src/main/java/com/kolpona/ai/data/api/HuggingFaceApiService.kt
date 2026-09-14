@@ -73,6 +73,8 @@ class HuggingFaceApiService(
                     return@withContext execute(url, body, media, expectVideo = true, allowRetry = true)
                 } catch (e: GenerationException) {
                     last = e
+                    if (e.error == GenerationError.RATE_LIMIT || e.error == GenerationError.NETWORK) throw e
+                    if (e.error != GenerationError.INVALID_PROMPT) break
                 }
             }
         }
@@ -104,6 +106,8 @@ class HuggingFaceApiService(
                     return@withContext execute(url, body, media, expectVideo = true, allowRetry = true)
                 } catch (e: GenerationException) {
                     last = e
+                    if (e.error == GenerationError.RATE_LIMIT || e.error == GenerationError.NETWORK) throw e
+                    if (e.error != GenerationError.INVALID_PROMPT) break
                 }
             }
         }
@@ -276,9 +280,7 @@ class HuggingFaceApiService(
                     404, 410 -> throw GenerationException(
                         if (expectVideo) GenerationError.VIDEO_UNAVAILABLE else GenerationError.API
                     )
-                    400, 422 -> throw GenerationException(
-                        if (expectVideo) GenerationError.VIDEO_UNAVAILABLE else GenerationError.INVALID_PROMPT
-                    )
+                    400, 422 -> throw GenerationException(GenerationError.INVALID_PROMPT)
                     401, 403 -> throw GenerationException(
                         if (expectVideo) GenerationError.VIDEO_UNAVAILABLE else GenerationError.API
                     )
@@ -329,9 +331,13 @@ class HuggingFaceApiService(
         if (expectVideo && isFalQueue(asText)) {
             return pollFalQueue(asText, submitUrl, http)
         }
+        if (expectVideo && isWavespeedSubmit(asText)) {
+            return pollWavespeed(asText, submitUrl, http)
+        }
         val statusUrl = MediaPayload.queueStatusUrl(asText)
         if (statusUrl != null) {
-            return pollUntilMedia(statusUrl, expectVideo, http)
+            val pollUrl = rewriteProviderPollUrl(submitUrl, statusUrl)
+            return pollUntilMedia(pollUrl, expectVideo, http)
         }
         val nested = MediaPayload.extractHttpUrl(asText)
         if (!nested.isNullOrBlank()) {
@@ -345,12 +351,7 @@ class HuggingFaceApiService(
     private fun pollUntilMedia(url: String, expectVideo: Boolean, http: OkHttpClient): ByteArray {
         repeat(50) { index ->
             if (index > 0) Thread.sleep(4_000L)
-            val request = Request.Builder()
-                .url(url)
-                .get()
-                .header("Authorization", "Bearer ${HuggingFaceConfig.apiKey}")
-                .header("User-Agent", HuggingFaceConfig.USER_AGENT)
-                .build()
+            val request = authorizedGet(url)
             http.newCall(request).execute().use { response ->
                 val bytes = response.body?.bytes() ?: ByteArray(0)
                 if (!response.isSuccessful) return@use
@@ -388,20 +389,20 @@ class HuggingFaceApiService(
         val hardcoded = when {
             model.contains("A14B", ignoreCase = true) -> listOf(
                 "${HuggingFaceConfig.ROUTER_HOST}/fal-ai/fal-ai/wan/v2.2-a14b/text-to-video",
-                "${HuggingFaceConfig.ROUTER_HOST}/replicate/wan-video/wan-2.2-t2v-fast",
-                "${HuggingFaceConfig.ROUTER_HOST}/wavespeed/wavespeed-ai/wan-2.2/t2v-720p"
+                "${HuggingFaceConfig.ROUTER_HOST}/replicate/v1/models/wan-video/wan-2.2-t2v-fast/predictions",
+                "${HuggingFaceConfig.ROUTER_HOST}/wavespeed/api/v3/wavespeed-ai/wan-2.2/t2v-720p"
             )
             model.contains("Wan2.2", ignoreCase = true) -> listOf(
                 "${HuggingFaceConfig.ROUTER_HOST}/fal-ai/fal-ai/wan/v2.2-5b/text-to-video",
-                "${HuggingFaceConfig.ROUTER_HOST}/replicate/wan-video/wan-2.2-5b-fast",
-                "${HuggingFaceConfig.ROUTER_HOST}/wavespeed/wavespeed-ai/wan-2.2/t2v-5b-720p"
+                "${HuggingFaceConfig.ROUTER_HOST}/replicate/v1/models/wan-video/wan-2.2-5b-fast/predictions",
+                "${HuggingFaceConfig.ROUTER_HOST}/wavespeed/api/v3/wavespeed-ai/wan-2.2/t2v-5b-720p"
             )
             model.contains("Wan2.1", ignoreCase = true) -> listOf(
                 "${HuggingFaceConfig.ROUTER_HOST}/fal-ai/fal-ai/wan/v2.1/1.3b/text-to-video"
             )
             model.contains("Hunyuan", ignoreCase = true) -> listOf(
                 "${HuggingFaceConfig.ROUTER_HOST}/fal-ai/fal-ai/hunyuan-video",
-                "${HuggingFaceConfig.ROUTER_HOST}/wavespeed/wavespeed-ai/hunyuan-video/t2v"
+                "${HuggingFaceConfig.ROUTER_HOST}/wavespeed/api/v3/wavespeed-ai/hunyuan-video/t2v"
             )
             else -> emptyList()
         }
@@ -429,7 +430,7 @@ class HuggingFaceApiService(
             if (entry.optString("task") != task) continue
             val providerId = entry.optString("providerId")
             if (providerId.isBlank()) continue
-            urls += "${HuggingFaceConfig.ROUTER_HOST}/$provider/$providerId"
+            urls += providerUrl(provider, providerId)
         }
         return urls
     }
@@ -444,11 +445,22 @@ class HuggingFaceApiService(
         val promptOnly = """{"prompt":"$quoted"}"""
         val replicate = """{"input":{"prompt":"$quoted"}}"""
         val aspect = if (width != null && height != null && width >= height) "16:9" else "9:16"
-        val fal = """{"prompt":"$quoted","aspect_ratio":"$aspect","enable_prompt_expansion":false}"""
+        val fal = """{"prompt":"$quoted","aspect_ratio":"$aspect","resolution":"720p","enable_prompt_expansion":false}"""
         return when {
             url.contains("replicate", ignoreCase = true) -> listOf(replicate)
+            url.contains("wavespeed", ignoreCase = true) -> listOf(promptOnly)
             else -> listOf(fal, promptOnly)
         }.distinct()
+    }
+
+    private fun providerUrl(provider: String, providerId: String): String {
+        val host = HuggingFaceConfig.ROUTER_HOST
+        return when (provider.lowercase()) {
+            "fal-ai" -> "$host/fal-ai/$providerId"
+            "replicate" -> "$host/replicate/v1/models/$providerId/predictions"
+            "wavespeed" -> "$host/wavespeed/api/v3/$providerId"
+            else -> "$host/$provider/$providerId"
+        }
     }
 
     private fun withFalQueue(url: String): String {
@@ -472,7 +484,7 @@ class HuggingFaceApiService(
         }
         val (statusUrl, resultUrl) = falQueueUrls(submitUrl, responseUrl)
         try {
-            repeat(90) { index ->
+            repeat(180) { index ->
                 if (index > 0) Thread.sleep(2_000L)
                 val statusText = getText(statusUrl, http) ?: return@repeat
                 if (MediaPayload.queueFailed(statusText)) {
@@ -520,15 +532,76 @@ class HuggingFaceApiService(
         }
     }
 
-    private fun getText(url: String, http: OkHttpClient): String? {
-        val request = Request.Builder()
+    private fun isWavespeedSubmit(text: String): Boolean {
+        val json = runCatching { JSONObject(text.trim()) }.getOrNull() ?: return false
+        val data = json.optJSONObject("data") ?: return false
+        val get = data.optJSONObject("urls")?.optString("get").orEmpty()
+        return get.startsWith("http") || data.optString("id").isNotBlank()
+    }
+
+    private fun pollWavespeed(submitText: String, submitUrl: String, http: OkHttpClient): ByteArray {
+        val json = JSONObject(submitText.trim())
+        val data = json.optJSONObject("data") ?: throw GenerationException(GenerationError.VIDEO_UNAVAILABLE)
+        val getUrl = data.optJSONObject("urls")?.optString("get").orEmpty()
+        if (!getUrl.startsWith("http")) {
+            throw GenerationException(GenerationError.VIDEO_UNAVAILABLE)
+        }
+        val pollUrl = rewriteProviderPollUrl(submitUrl, getUrl)
+        try {
+            repeat(180) { index ->
+                if (index > 0) Thread.sleep(2_000L)
+                val statusText = getText(pollUrl, http) ?: return@repeat
+                if (MediaPayload.queueFailed(statusText)) {
+                    throw GenerationException(GenerationError.VIDEO_UNAVAILABLE)
+                }
+                if (MediaPayload.queueDone(statusText)) {
+                    val mediaUrl = MediaPayload.extractHttpUrl(statusText)
+                    if (!mediaUrl.isNullOrBlank() && MediaPayload.isMediaFileUrl(mediaUrl)) {
+                        return executeGet(mediaUrl, expectVideo = true, http)
+                    }
+                    throw GenerationException(GenerationError.VIDEO_UNAVAILABLE)
+                }
+            }
+        } catch (e: GenerationException) {
+            throw e
+        } catch (_: Exception) {
+            throw GenerationException(GenerationError.VIDEO_UNAVAILABLE)
+        }
+        throw GenerationException(GenerationError.VIDEO_UNAVAILABLE)
+    }
+
+    private fun rewriteProviderPollUrl(submitUrl: String, responseUrl: String): String {
+        if (!responseUrl.startsWith("http")) return submitUrl
+        val submit = runCatching { java.net.URI(submitUrl) }.getOrNull() ?: return responseUrl
+        val response = runCatching { java.net.URI(responseUrl) }.getOrNull() ?: return responseUrl
+        if (response.host.equals("router.huggingface.co", ignoreCase = true)) return responseUrl
+        val path = response.path.orEmpty()
+        if (path.isBlank()) return responseUrl
+        val query = submit.rawQuery?.let { "?$it" }.orEmpty()
+        val extra = when {
+            !submit.host.equals("router.huggingface.co", ignoreCase = true) -> ""
+            submitUrl.contains("/fal-ai", ignoreCase = true) -> "/fal-ai"
+            submitUrl.contains("/wavespeed", ignoreCase = true) -> "/wavespeed"
+            submitUrl.contains("/replicate", ignoreCase = true) -> "/replicate"
+            else -> ""
+        }
+        return "${submit.scheme}://${submit.host}$extra$path$query"
+    }
+
+    private fun authorizedGet(url: String): Request {
+        val builder = Request.Builder()
             .url(url)
             .get()
-            .header("Authorization", "Bearer ${HuggingFaceConfig.apiKey}")
             .header("User-Agent", HuggingFaceConfig.USER_AGENT)
-            .header("Accept", "application/json")
-            .build()
-        return http.newCall(request).execute().use { response ->
+            .header("Accept", "application/json,video/mp4,*/*")
+        if (url.contains("huggingface.co", ignoreCase = true)) {
+            builder.header("Authorization", "Bearer ${HuggingFaceConfig.apiKey}")
+        }
+        return builder.build()
+    }
+
+    private fun getText(url: String, http: OkHttpClient): String? {
+        return http.newCall(authorizedGet(url)).execute().use { response ->
             when (response.code) {
                 in 200..299 -> response.body?.string()
                 401, 403, 404 -> throw GenerationException(GenerationError.VIDEO_UNAVAILABLE)
@@ -593,12 +666,7 @@ class HuggingFaceApiService(
         http: OkHttpClient = if (expectVideo) videoClient else client,
         hop: Int = 0
     ): ByteArray {
-        val request = Request.Builder()
-            .url(url)
-            .get()
-            .header("Authorization", "Bearer ${HuggingFaceConfig.apiKey}")
-            .header("User-Agent", HuggingFaceConfig.USER_AGENT)
-            .build()
+        val request = authorizedGet(url)
         http.newCall(request).execute().use { response ->
             val bytes = response.body?.bytes() ?: ByteArray(0)
             if (!response.isSuccessful) {

@@ -138,7 +138,7 @@
     <string name="error_ad_unavailable_short">No rewarded video is available right now. Try again later.</string>
     <string name="error_save">Couldn\'t save. Please try again.</string>
     <string name="error_generic">Something went wrong. Please try again.</string>
-    <string name="error_video">Couldn\'t create the video. Check your connection and try again.</string>
+    <string name="error_video">Couldn\'t create the video. Stay on Video, keep the phone online, and try again — a clip can take a minute.</string>
 
     <string name="onboarding_1_title">Imagination</string>
     <string name="onboarding_1_quote_1">Unleash your imagination. Chat naturally with Kolpona and watch your ideas come to life.</string>

@@ -109,7 +109,7 @@ fun SettingsScreen(
         viewModel.events.collect { event ->
             val message = when (event) {
                 SettingsEvent.Refreshed -> context.getString(R.string.refreshed)
-                SettingsEvent.RefreshFailed -> context.getString(R.string.error_network)
+                SettingsEvent.RefreshFailed -> context.getString(R.string.error_refresh)
             }
             Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
         }

@@ -246,7 +246,7 @@ fun HomeScreen(
                 HomeEvent.Saved -> Toast.makeText(context, context.getString(R.string.image_saved), Toast.LENGTH_SHORT).show()
                 HomeEvent.SaveFailed -> Toast.makeText(context, context.getString(R.string.error_save), Toast.LENGTH_SHORT).show()
                 HomeEvent.Refreshed -> Toast.makeText(context, context.getString(R.string.refreshed), Toast.LENGTH_SHORT).show()
-                HomeEvent.RefreshFailed -> Toast.makeText(context, context.getString(R.string.error_network), Toast.LENGTH_SHORT).show()
+                HomeEvent.RefreshFailed -> Toast.makeText(context, context.getString(R.string.error_refresh), Toast.LENGTH_SHORT).show()
             }
         }
     }

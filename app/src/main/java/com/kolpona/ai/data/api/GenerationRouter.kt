@@ -26,8 +26,8 @@ data class MediaBytes(
 )
 
 /**
- * Image: race Hugging Face FLUX.1-dev and Cloudflare FLUX.1-schnell.
- * The first valid image wins. Video: Hugging Face only, never faked.
+ * Image: race Hugging Face FLUX and Cloudflare FLUX.1-schnell.
+ * Video: Cloudflare first (same path as working photos), then Hugging Face. Never faked.
  */
 class GenerationRouter(
     private val huggingFace: HuggingFaceApiService,
@@ -106,23 +106,32 @@ class GenerationRouter(
 
     private suspend fun generateVideo(request: MediaRequest): MediaBytes {
         var last: GenerationException? = null
-        if (huggingFace.isConfigured) {
-            for (model in HuggingFaceConfig.VIDEO_MODELS) {
-                try {
-                    val bytes = huggingFace.generateVideo(
-                        prompt = request.prompt,
-                        model = model,
-                        width = request.width,
-                        height = request.height,
-                        negativePrompt = request.negativePrompt
-                    )
-                    if (qualityOk(bytes, MediaKind.VIDEO)) {
-                        return MediaBytes(bytes, model)
-                    }
-                    last = GenerationException(GenerationError.VIDEO_UNAVAILABLE)
-                } catch (e: GenerationException) {
-                    last = e
+        if (cloudflare.isConfigured) {
+            try {
+                val bytes = cloudflare.generateVideo(request.prompt, request.width, request.height)
+                if (qualityOk(bytes, MediaKind.VIDEO)) {
+                    return MediaBytes(bytes, "cloudflare-video")
                 }
+                last = GenerationException(GenerationError.VIDEO_UNAVAILABLE)
+            } catch (e: GenerationException) {
+                last = e
+            }
+        }
+        if (huggingFace.isConfigured) {
+            try {
+                val bytes = huggingFace.generateVideo(
+                    prompt = request.prompt,
+                    model = HuggingFaceConfig.VIDEO_MODEL,
+                    width = request.width,
+                    height = request.height,
+                    negativePrompt = request.negativePrompt
+                )
+                if (qualityOk(bytes, MediaKind.VIDEO)) {
+                    return MediaBytes(bytes, HuggingFaceConfig.VIDEO_MODEL)
+                }
+                last = GenerationException(GenerationError.VIDEO_UNAVAILABLE)
+            } catch (e: GenerationException) {
+                last = e
             }
         }
         val frame = try {
@@ -130,18 +139,32 @@ class GenerationRouter(
         } catch (e: GenerationException) {
             throw videoError(last ?: e)
         }
-        if (!huggingFace.isConfigured) {
-            throw videoError(last)
+        if (cloudflare.isConfigured) {
+            try {
+                val animated = cloudflare.generateVideoFromImage(
+                    request.prompt,
+                    frame.bytes,
+                    request.width,
+                    request.height
+                )
+                if (qualityOk(animated, MediaKind.VIDEO)) {
+                    return MediaBytes(animated, "cloudflare-i2v")
+                }
+            } catch (e: GenerationException) {
+                last = e
+            }
         }
-        val animated = try {
-            huggingFace.generateVideoFromImage(request.prompt, frame.bytes)
-        } catch (e: GenerationException) {
-            throw videoError(last ?: e)
+        if (huggingFace.isConfigured) {
+            try {
+                val animated = huggingFace.generateVideoFromImage(request.prompt, frame.bytes)
+                if (qualityOk(animated, MediaKind.VIDEO)) {
+                    return MediaBytes(animated, "ltx-i2v")
+                }
+            } catch (e: GenerationException) {
+                last = e
+            }
         }
-        if (!qualityOk(animated, MediaKind.VIDEO)) {
-            throw videoError(last)
-        }
-        return MediaBytes(animated, "ltx-i2v")
+        throw videoError(last)
     }
 
     private fun videoError(last: GenerationException?): GenerationException {

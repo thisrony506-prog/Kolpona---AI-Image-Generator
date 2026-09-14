@@ -117,7 +117,9 @@ object MediaPayload {
             lower.contains("cdn.fal.ai") ||
             lower.contains("falserverless") ||
             lower.contains("replicate.delivery") ||
-            lower.contains("wavespeed")
+            lower.contains("wavespeed") ||
+            lower.contains("vidu.com") ||
+            lower.contains("aig.cloudflare.com")
     }
 
     fun queueDone(text: String): Boolean {

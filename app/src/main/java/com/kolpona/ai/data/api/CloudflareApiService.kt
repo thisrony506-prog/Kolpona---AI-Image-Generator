@@ -1,5 +1,6 @@
 package com.kolpona.ai.data.api
 
+import android.util.Base64
 import com.kolpona.ai.domain.model.GenerationError
 import com.kolpona.ai.prompt.LanguageScripts
 import kotlinx.coroutines.Dispatchers
@@ -25,6 +26,13 @@ class CloudflareApiService(
         .readTimeout(20, TimeUnit.SECONDS)
         .writeTimeout(12, TimeUnit.SECONDS)
         .callTimeout(25, TimeUnit.SECONDS)
+        .build()
+
+    private val videoClient: OkHttpClient = client.newBuilder()
+        .connectTimeout(20, TimeUnit.SECONDS)
+        .readTimeout(300, TimeUnit.SECONDS)
+        .writeTimeout(45, TimeUnit.SECONDS)
+        .callTimeout(320, TimeUnit.SECONDS)
         .build()
 
     suspend fun generateImage(
@@ -69,6 +77,52 @@ class CloudflareApiService(
         } catch (_: Exception) {
             throw GenerationException(GenerationError.UNKNOWN)
         }
+    }
+
+    suspend fun generateVideo(
+        prompt: String,
+        width: Int,
+        height: Int
+    ): ByteArray = withContext(Dispatchers.IO) {
+        if (!isConfigured) throw GenerationException(GenerationError.VIDEO_UNAVAILABLE)
+        val aspect = aspectOf(width, height)
+        val pixels = if (width >= height) "1280x720" else "720x1280"
+        var last: GenerationException? = null
+        for (model in CloudflareConfig.VIDEO_MODELS) {
+            try {
+                val bytes = runVideo(model, videoInput(model, prompt, aspect, pixels, imageUri = null))
+                if (MediaPayload.looksLikeVideo(bytes) && bytes.size >= 4_000) return@withContext bytes
+                last = GenerationException(GenerationError.VIDEO_UNAVAILABLE)
+            } catch (e: GenerationException) {
+                last = e
+                if (e.error == GenerationError.RATE_LIMIT || e.error == GenerationError.NETWORK) throw e
+            }
+        }
+        throw last ?: GenerationException(GenerationError.VIDEO_UNAVAILABLE)
+    }
+
+    suspend fun generateVideoFromImage(
+        prompt: String,
+        jpeg: ByteArray,
+        width: Int,
+        height: Int
+    ): ByteArray = withContext(Dispatchers.IO) {
+        if (!isConfigured) throw GenerationException(GenerationError.VIDEO_UNAVAILABLE)
+        val dataUri = "data:image/jpeg;base64," + Base64.encodeToString(jpeg, Base64.NO_WRAP)
+        val aspect = aspectOf(width, height)
+        val pixels = if (width >= height) "1280x720" else "720x1280"
+        var last: GenerationException? = null
+        for (model in CloudflareConfig.VIDEO_MODELS) {
+            try {
+                val bytes = runVideo(model, videoInput(model, prompt, aspect, pixels, imageUri = dataUri))
+                if (MediaPayload.looksLikeVideo(bytes) && bytes.size >= 4_000) return@withContext bytes
+                last = GenerationException(GenerationError.VIDEO_UNAVAILABLE)
+            } catch (e: GenerationException) {
+                last = e
+                if (e.error == GenerationError.RATE_LIMIT || e.error == GenerationError.NETWORK) throw e
+            }
+        }
+        throw last ?: GenerationException(GenerationError.VIDEO_UNAVAILABLE)
     }
 
     suspend fun rewriteToEnglish(prompt: String): String? = withContext(Dispatchers.IO) {
@@ -121,5 +175,115 @@ class CloudflareApiService(
             if (MediaPayload.looksLikeImage(decoded)) return decoded
         }
         throw GenerationException(GenerationError.EMPTY_RESPONSE)
+    }
+
+    private fun aspectOf(width: Int, height: Int): String = when {
+        width == height -> "1:1"
+        width > height -> "16:9"
+        else -> "9:16"
+    }
+
+    private fun videoInput(
+        model: String,
+        prompt: String,
+        aspect: String,
+        pixels: String,
+        imageUri: String?
+    ): JSONObject {
+        val input = JSONObject().put("prompt", prompt.take(1400))
+        when {
+            model.startsWith("vidu/") -> {
+                input.put("duration", 5)
+                input.put("resolution", "720p")
+                input.put("audio", false)
+                if (imageUri.isNullOrBlank()) {
+                    input.put("aspect_ratio", aspect)
+                } else {
+                    input.put("start_image", imageUri)
+                }
+            }
+            model.contains("ltx", ignoreCase = true) -> {
+                input.put("duration", 5)
+                input.put("resolution", pixels)
+                input.put("fps", 24)
+                input.put("generate_audio", false)
+                if (!imageUri.isNullOrBlank()) input.put("image_uri", imageUri)
+            }
+            else -> {
+                input.put("mode", if (imageUri.isNullOrBlank()) "t2v" else "i2v")
+                input.put("duration", 5)
+                input.put("aspect_ratio", aspect)
+                input.put("resolution", "hd")
+                input.put("generate_audio", false)
+            }
+        }
+        return input
+    }
+
+    private fun runVideo(model: String, input: JSONObject): ByteArray {
+        val payload = JSONObject()
+            .put("model", model)
+            .put("input", input)
+            .toString()
+        val media = "application/json; charset=utf-8".toMediaType()
+        val request = Request.Builder()
+            .url(CloudflareConfig.unifiedRunUrl())
+            .post(payload.toRequestBody(media))
+            .header("Accept", "application/json,video/mp4")
+            .header("Content-Type", "application/json")
+            .header("Authorization", "Bearer ${CloudflareConfig.apiToken}")
+            .header("User-Agent", CloudflareConfig.USER_AGENT)
+            .build()
+        try {
+            videoClient.newCall(request).execute().use { response ->
+                val bytes = response.body?.bytes() ?: ByteArray(0)
+                when (response.code) {
+                    in 200..299 -> return parseVideo(bytes)
+                    429 -> throw GenerationException(GenerationError.RATE_LIMIT)
+                    400, 422 -> throw GenerationException(GenerationError.INVALID_PROMPT)
+                    401, 403 -> throw GenerationException(GenerationError.VIDEO_UNAVAILABLE)
+                    in 500..599 -> throw GenerationException(GenerationError.SERVER)
+                    else -> throw GenerationException(GenerationError.VIDEO_UNAVAILABLE)
+                }
+            }
+        } catch (e: GenerationException) {
+            throw e
+        } catch (_: SocketTimeoutException) {
+            throw GenerationException(GenerationError.VIDEO_UNAVAILABLE)
+        } catch (_: UnknownHostException) {
+            throw GenerationException(GenerationError.NETWORK)
+        } catch (_: IOException) {
+            throw GenerationException(GenerationError.VIDEO_UNAVAILABLE)
+        } catch (_: Exception) {
+            throw GenerationException(GenerationError.VIDEO_UNAVAILABLE)
+        }
+    }
+
+    private fun parseVideo(bytes: ByteArray): ByteArray {
+        if (MediaPayload.looksLikeVideo(bytes)) return bytes
+        val text = runCatching { bytes.decodeToString() }.getOrNull().orEmpty()
+        MediaPayload.decodeEmbeddedImage(text)?.let { decoded ->
+            if (MediaPayload.looksLikeVideo(decoded)) return decoded
+        }
+        val url = MediaPayload.extractHttpUrl(text)
+        if (!url.isNullOrBlank() && MediaPayload.isMediaFileUrl(url)) {
+            return downloadMedia(url)
+        }
+        throw GenerationException(GenerationError.VIDEO_UNAVAILABLE)
+    }
+
+    private fun downloadMedia(url: String): ByteArray {
+        val request = Request.Builder()
+            .url(url)
+            .get()
+            .header("User-Agent", CloudflareConfig.USER_AGENT)
+            .header("Accept", "video/mp4,*/*")
+            .build()
+        videoClient.newCall(request).execute().use { response ->
+            val bytes = response.body?.bytes() ?: ByteArray(0)
+            if (!response.isSuccessful) throw GenerationException(GenerationError.VIDEO_UNAVAILABLE)
+            if (MediaPayload.looksLikeVideo(bytes)) return bytes
+            throw GenerationException(GenerationError.VIDEO_UNAVAILABLE)
+        }
     }
 }

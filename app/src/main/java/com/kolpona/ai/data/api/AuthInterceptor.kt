@@ -15,7 +15,7 @@ class AuthInterceptor : Interceptor {
         val host = original.url.host.lowercase()
         val token = when {
             host.contains("huggingface.co") -> HuggingFaceConfig.apiKey
-            host.contains("cloudflare.com") -> CloudflareConfig.apiToken
+            host == "api.cloudflare.com" -> CloudflareConfig.apiToken
             else -> ""
         }
         val request = if (token.isNotBlank()) {

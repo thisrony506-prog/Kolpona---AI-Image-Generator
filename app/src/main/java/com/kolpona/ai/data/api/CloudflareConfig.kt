@@ -14,7 +14,11 @@ object CloudflareConfig {
         "@cf/meta/llama-3.2-3b-instruct",
         "@cf/meta/llama-3.1-8b-instruct"
     )
-    const val USER_AGENT = "Kolpona/1.11.1 (Android)"
+    const val USER_AGENT = "Kolpona/1.14.3 (Android)"
+    val VIDEO_MODELS: List<String> = listOf(
+        "vidu/q3-pro",
+        "lightricks/ltx-2-5-fast"
+    )
 
     val accountId: String
         get() = BuildConfig.CLOUDFLARE_ACCOUNT_ID.trim()
@@ -27,4 +31,7 @@ object CloudflareConfig {
 
     fun runUrl(model: String = MODEL): String =
         "https://$HOST/client/v4/accounts/$accountId/ai/run/$model"
+
+    fun unifiedRunUrl(): String =
+        "https://$HOST/client/v4/accounts/$accountId/ai/run"
 }

@@ -92,7 +92,7 @@ fun HistoryScreen(
                 is HistoryEvent.Regenerated -> onOpenImage(event.imageId)
                 is HistoryEvent.GenerateFailed -> Unit
                 HistoryEvent.Refreshed -> Toast.makeText(context, context.getString(R.string.refreshed), Toast.LENGTH_SHORT).show()
-                HistoryEvent.RefreshFailed -> Toast.makeText(context, context.getString(R.string.error_network), Toast.LENGTH_SHORT).show()
+                HistoryEvent.RefreshFailed -> Toast.makeText(context, context.getString(R.string.error_refresh), Toast.LENGTH_SHORT).show()
             }
         }
     }

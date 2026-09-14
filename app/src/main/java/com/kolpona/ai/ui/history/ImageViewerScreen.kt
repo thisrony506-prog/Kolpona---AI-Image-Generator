@@ -71,6 +71,7 @@ fun ImageViewerScreen(
                 HistoryEvent.SaveFailed -> Toast.makeText(context, context.getString(R.string.error_save), Toast.LENGTH_SHORT).show()
                 is HistoryEvent.Regenerated -> onGenerateAgainId(event.imageId)
                 is HistoryEvent.GenerateFailed -> Toast.makeText(context, context.getString(R.string.generation_failed), Toast.LENGTH_LONG).show()
+                HistoryEvent.Refreshed, HistoryEvent.RefreshFailed -> Unit
             }
         }
     }

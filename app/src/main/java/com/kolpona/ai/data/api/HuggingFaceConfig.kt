@@ -31,7 +31,7 @@ object HuggingFaceConfig {
         "Qwen/Qwen2.5-3B-Instruct"
     )
     const val TRANSLATE_MODEL = "facebook/nllb-200-distilled-600M"
-    const val USER_AGENT = "Kolpona/1.14.4 (Android)"
+    const val USER_AGENT = "Kolpona/1.14.5 (Android)"
 
     val apiKey: String
         get() = BuildConfig.HUGGINGFACE_API_KEY

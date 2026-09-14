@@ -30,9 +30,9 @@ class CloudflareApiService(
 
     private val videoClient: OkHttpClient = client.newBuilder()
         .connectTimeout(20, TimeUnit.SECONDS)
-        .readTimeout(300, TimeUnit.SECONDS)
+        .readTimeout(400, TimeUnit.SECONDS)
         .writeTimeout(45, TimeUnit.SECONDS)
-        .callTimeout(320, TimeUnit.SECONDS)
+        .callTimeout(420, TimeUnit.SECONDS)
         .build()
 
     suspend fun generateImage(

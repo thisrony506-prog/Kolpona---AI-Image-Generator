@@ -82,7 +82,7 @@ class VideoBackendService(
             .header("Accept", "application/json")
             .header("Content-Type", "application/json")
             .header("Authorization", "Bearer $idToken")
-            .header("User-Agent", "Kolpona/1.14.4 (Android)")
+            .header("User-Agent", "Kolpona/1.14.5 (Android)")
             .build()
         try {
             val (code, text) = executeText(request)
@@ -90,7 +90,11 @@ class VideoBackendService(
             val errorCode = json?.optString("error").orEmpty()
             if (code !in 200..299 || json?.optBoolean("ok") == false) {
                 Log.w(TAG, "generateVideo http=$code error=$errorCode")
-                throw GenerationException(mapError(code, errorCode))
+                val missing = code == 404 &&
+                    (errorCode.isBlank() || text.contains("Page not found", ignoreCase = true))
+                throw GenerationException(
+                    if (missing) GenerationError.VIDEO_UNAVAILABLE else mapError(code, errorCode)
+                )
             }
             val videoUrl = json?.optString("videoUrl").orEmpty()
             if (!videoUrl.startsWith("http")) {
@@ -119,7 +123,7 @@ class VideoBackendService(
             .url(url)
             .get()
             .header("Accept", "video/mp4,*/*")
-            .header("User-Agent", "Kolpona/1.14.4 (Android)")
+            .header("User-Agent", "Kolpona/1.14.5 (Android)")
             .build()
         val (code, bytes) = executeBytes(request)
         if (code !in 200..299) {

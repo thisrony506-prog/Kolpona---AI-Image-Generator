@@ -23,9 +23,9 @@ class HuggingFaceApiService(
 
     private val videoClient: OkHttpClient = client.newBuilder()
         .connectTimeout(20, TimeUnit.SECONDS)
-        .readTimeout(240, TimeUnit.SECONDS)
+        .readTimeout(400, TimeUnit.SECONDS)
         .writeTimeout(45, TimeUnit.SECONDS)
-        .callTimeout(260, TimeUnit.SECONDS)
+        .callTimeout(420, TimeUnit.SECONDS)
         .build()
 
     private val chatClient: OkHttpClient = client.newBuilder()
@@ -73,7 +73,7 @@ class HuggingFaceApiService(
                     return@withContext execute(url, body, media, expectVideo = true, allowRetry = true)
                 } catch (e: GenerationException) {
                     last = e
-                    if (e.error == GenerationError.RATE_LIMIT || e.error == GenerationError.NETWORK) throw e
+                    if (e.error == GenerationError.NETWORK) throw e
                     if (e.error != GenerationError.INVALID_PROMPT) break
                 }
             }

@@ -1193,17 +1193,22 @@ private fun GeneratingCard(video: Boolean, aspect: AspectRatio, onCancel: () -> 
 private fun ErrorBubble(error: GenerationError, onRetry: () -> Unit) {
     val args = error.formatArgs()
     val message = if (args != null) stringResource(error.messageRes(), *args) else stringResource(error.messageRes())
-    Row(modifier = Modifier.fillMaxWidth()) {
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
         KolponaMark(size = 28.dp)
         Spacer(Modifier.size(8.dp))
         Column(
             modifier = Modifier
-                .widthIn(max = 320.dp)
-                .clip(RoundedCornerShape(20.dp))
-                .background(Color(0x33FF6B6B))
-                .padding(horizontal = 16.dp, vertical = 12.dp)
+                .widthIn(max = 340.dp)
+                .clip(RoundedCornerShape(22.dp))
+                .background(GlassFill)
+                .border(1.dp, PinkAccent.copy(alpha = 0.45f), RoundedCornerShape(22.dp))
+                .padding(horizontal = 14.dp, vertical = 12.dp)
         ) {
-            Text(text = message, color = SoftWhite)
+            Text(
+                text = message,
+                color = SoftWhite,
+                style = MaterialTheme.typography.bodyLarge
+            )
             if (error != GenerationError.EMPTY_PROMPT) {
                 TextButton(onClick = onRetry) {
                     Text(stringResource(R.string.try_again), color = ElectricBlue)

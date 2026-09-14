@@ -17,6 +17,7 @@ import com.kolpona.ai.domain.model.ImageStyle
 import com.kolpona.ai.domain.model.MediaKind
 import com.kolpona.ai.utils.ImageSaver
 import com.kolpona.ai.utils.ImageShare
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -103,25 +104,36 @@ class ResultViewModel(
             _state.update { it.copy(isGenerating = true, error = null) }
             val quality = preferences.imageQuality.first()
             val enhance = preferences.enhancePrompts.first()
-            val outcome = generateImage(
-                GenerationInput(
-                    prompt = current.prompt,
-                    style = ImageStyle.fromId(current.styleId),
-                    aspectRatio = AspectRatio.fromId(current.aspectRatioId),
-                    quality = quality,
-                    modelId = current.model,
-                    enhance = enhance,
-                    mediaType = MediaKind.fromId(current.mediaType)
+            try {
+                val outcome = generateImage(
+                    GenerationInput(
+                        prompt = current.prompt,
+                        style = ImageStyle.fromId(current.styleId),
+                        aspectRatio = AspectRatio.fromId(current.aspectRatioId),
+                        quality = quality,
+                        modelId = current.model,
+                        enhance = enhance,
+                        mediaType = MediaKind.fromId(current.mediaType)
+                    )
                 )
-            )
-            when (outcome) {
-                is GenerationOutcome.Success -> {
-                    _state.update { it.copy(isGenerating = false) }
-                    _events.emit(ResultEvent.Regenerated(outcome.image.id))
+                when (outcome) {
+                    is GenerationOutcome.Success -> {
+                        _state.update { it.copy(isGenerating = false) }
+                        _events.emit(ResultEvent.Regenerated(outcome.image.id))
+                    }
+                    is GenerationOutcome.Failure -> {
+                        _state.update { it.copy(isGenerating = false, error = outcome.error) }
+                    }
                 }
-                is GenerationOutcome.Failure -> {
-                    _state.update { it.copy(isGenerating = false, error = outcome.error) }
+            } catch (_: CancellationException) {
+                _state.update { it.copy(isGenerating = false) }
+            } catch (_: Throwable) {
+                val fallback = if (current.isVideo) {
+                    GenerationError.VIDEO_UNAVAILABLE
+                } else {
+                    GenerationError.UNKNOWN
                 }
+                _state.update { it.copy(isGenerating = false, error = fallback) }
             }
         }
     }

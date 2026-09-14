@@ -3,6 +3,7 @@ package com.kolpona.ai.data.api
 import android.util.Base64
 import com.kolpona.ai.domain.model.GenerationError
 import com.kolpona.ai.prompt.LanguageScripts
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -67,6 +68,8 @@ class CloudflareApiService(
                 }
             }
         } catch (e: GenerationException) {
+            throw e
+        } catch (e: CancellationException) {
             throw e
         } catch (_: SocketTimeoutException) {
             throw GenerationException(GenerationError.TIMEOUT)
@@ -248,6 +251,8 @@ class CloudflareApiService(
                 }
             }
         } catch (e: GenerationException) {
+            throw e
+        } catch (e: CancellationException) {
             throw e
         } catch (_: SocketTimeoutException) {
             throw GenerationException(GenerationError.VIDEO_UNAVAILABLE)

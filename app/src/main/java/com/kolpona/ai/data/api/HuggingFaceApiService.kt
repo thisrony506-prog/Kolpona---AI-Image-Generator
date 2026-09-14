@@ -3,8 +3,12 @@ package com.kolpona.ai.data.api
 import android.util.Base64
 import com.kolpona.ai.domain.model.GenerationError
 import com.kolpona.ai.prompt.LanguageScripts
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.coroutineContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -196,7 +200,7 @@ class HuggingFaceApiService(
         return null
     }
 
-    private fun postModel(
+    private suspend fun postModel(
         model: String,
         prompt: String,
         expectVideo: Boolean,
@@ -228,7 +232,7 @@ class HuggingFaceApiService(
         )
     }
 
-    private fun execute(
+    private suspend fun execute(
         url: String,
         bodyJson: String,
         media: okhttp3.MediaType,
@@ -257,7 +261,7 @@ class HuggingFaceApiService(
                         val asText = runCatching { bytes.decodeToString() }.getOrNull().orEmpty()
                         val wait = MediaPayload.loadingWaitSeconds(asText)
                         if (wait != null && allowRetry) {
-                            Thread.sleep(wait * 1000L)
+                            delay(wait * 1000L)
                             return execute(url, bodyJson, media, expectVideo, allowRetry = false)
                         }
                         if (!location.isNullOrBlank() && (bytes.isEmpty() || response.code == 202)) {
@@ -270,7 +274,7 @@ class HuggingFaceApiService(
                             val wait = MediaPayload.loadingWaitSeconds(
                                 runCatching { bytes.decodeToString() }.getOrNull().orEmpty()
                             ) ?: 12
-                            Thread.sleep(wait * 1000L)
+                            delay(wait * 1000L)
                             return execute(url, bodyJson, media, expectVideo, allowRetry = false)
                         }
                         throw GenerationException(
@@ -292,6 +296,8 @@ class HuggingFaceApiService(
                 }
             }
         } catch (e: GenerationException) {
+            throw e
+        } catch (e: CancellationException) {
             throw e
         } catch (_: SocketTimeoutException) {
             throw GenerationException(
@@ -316,7 +322,7 @@ class HuggingFaceApiService(
         }
     }
 
-    private fun interpretSuccess(
+    private suspend fun interpretSuccess(
         bytes: ByteArray,
         expectVideo: Boolean,
         http: OkHttpClient,
@@ -349,9 +355,10 @@ class HuggingFaceApiService(
         )
     }
 
-    private fun pollUntilMedia(url: String, expectVideo: Boolean, http: OkHttpClient): ByteArray {
+    private suspend fun pollUntilMedia(url: String, expectVideo: Boolean, http: OkHttpClient): ByteArray {
         repeat(50) { index ->
-            if (index > 0) Thread.sleep(4_000L)
+            coroutineContext.ensureActive()
+            if (index > 0) delay(4_000L)
             val request = authorizedGet(url)
             http.newCall(request).execute().use { response ->
                 val bytes = response.body?.bytes() ?: ByteArray(0)
@@ -463,7 +470,7 @@ class HuggingFaceApiService(
         return id.isNotBlank() && response.startsWith("http")
     }
 
-    private fun pollFalQueue(submitText: String, submitUrl: String, http: OkHttpClient): ByteArray {
+    private suspend fun pollFalQueue(submitText: String, submitUrl: String, http: OkHttpClient): ByteArray {
         val json = JSONObject(submitText.trim())
         val responseUrl = json.optString("response_url").ifBlank { json.optString("responseUrl") }
         if (!responseUrl.startsWith("http")) {
@@ -472,7 +479,8 @@ class HuggingFaceApiService(
         val (statusUrl, resultUrl) = falQueueUrls(submitUrl, responseUrl)
         try {
             repeat(180) { index ->
-                if (index > 0) Thread.sleep(2_000L)
+                coroutineContext.ensureActive()
+                if (index > 0) delay(2_000L)
                 val statusText = getText(statusUrl, http) ?: return@repeat
                 if (MediaPayload.queueFailed(statusText)) {
                     throw GenerationException(GenerationError.VIDEO_UNAVAILABLE)
@@ -495,6 +503,8 @@ class HuggingFaceApiService(
                 }
             }
         } catch (e: GenerationException) {
+            throw e
+        } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
             throw GenerationException(GenerationError.VIDEO_UNAVAILABLE)
@@ -526,7 +536,7 @@ class HuggingFaceApiService(
         return get.startsWith("http") || data.optString("id").isNotBlank()
     }
 
-    private fun pollWavespeed(submitText: String, submitUrl: String, http: OkHttpClient): ByteArray {
+    private suspend fun pollWavespeed(submitText: String, submitUrl: String, http: OkHttpClient): ByteArray {
         val json = JSONObject(submitText.trim())
         val data = json.optJSONObject("data") ?: throw GenerationException(GenerationError.VIDEO_UNAVAILABLE)
         val getUrl = data.optJSONObject("urls")?.optString("get").orEmpty()
@@ -536,7 +546,8 @@ class HuggingFaceApiService(
         val pollUrl = rewriteProviderPollUrl(submitUrl, getUrl)
         try {
             repeat(180) { index ->
-                if (index > 0) Thread.sleep(2_000L)
+                coroutineContext.ensureActive()
+                if (index > 0) delay(2_000L)
                 val statusText = getText(pollUrl, http) ?: return@repeat
                 if (MediaPayload.queueFailed(statusText)) {
                     throw GenerationException(GenerationError.VIDEO_UNAVAILABLE)
@@ -550,6 +561,8 @@ class HuggingFaceApiService(
                 }
             }
         } catch (e: GenerationException) {
+            throw e
+        } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
             throw GenerationException(GenerationError.VIDEO_UNAVAILABLE)

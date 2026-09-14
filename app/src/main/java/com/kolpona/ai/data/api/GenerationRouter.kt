@@ -5,9 +5,11 @@ import com.kolpona.ai.domain.model.GenerationError
 import com.kolpona.ai.domain.model.MediaKind
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 
@@ -62,7 +64,7 @@ class GenerationRouter(
                     throw e
                 } catch (e: GenerationException) {
                     lastError.set(e)
-                } catch (_: Exception) {
+                } catch (_: Throwable) {
                     lastError.set(GenerationException(GenerationError.UNKNOWN))
                 } finally {
                     if (remaining.decrementAndGet() == 0 && !winner.isCompleted) {
@@ -117,7 +119,7 @@ class GenerationRouter(
         }
 
         if (frame != null) {
-            val jpeg = JpegBytes.ensure(frame.bytes)
+            val jpeg = withContext(Dispatchers.IO) { JpegBytes.ensure(frame.bytes) }
             if (cloudflare.isConfigured) {
                 try {
                     val animated = cloudflare.generateVideoFromImage(

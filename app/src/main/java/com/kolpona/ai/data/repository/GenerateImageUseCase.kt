@@ -14,6 +14,7 @@ import com.kolpona.ai.notify.KolponaNotifier
 import com.kolpona.ai.utils.ImageFileStore
 import com.kolpona.ai.utils.NetworkMonitor
 import com.kolpona.ai.utils.PromptEnhancer
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.UUID
@@ -30,6 +31,18 @@ class GenerateImageUseCase(
     private val mutex = Mutex()
 
     suspend operator fun invoke(input: GenerationInput): GenerationOutcome = mutex.withLock {
+        try {
+            runLocked(input)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: GenerationException) {
+            GenerationOutcome.Failure(mapError(input.mediaType, e.error))
+        } catch (_: Throwable) {
+            GenerationOutcome.Failure(fallbackError(input.mediaType))
+        }
+    }
+
+    private suspend fun runLocked(input: GenerationInput): GenerationOutcome {
         val prompt = input.prompt.trim()
         if (prompt.isEmpty()) {
             return GenerationOutcome.Failure(GenerationError.EMPTY_PROMPT)
@@ -50,27 +63,23 @@ class GenerateImageUseCase(
             input.aspectRatio.dimensions(input.quality)
         }
 
-        val result = try {
-            router.generate(
-                MediaRequest(
-                    prompt = optimized.prompt,
-                    mediaType = input.mediaType,
-                    width = width,
-                    height = height,
-                    negativePrompt = optimized.negativePrompt,
-                    scene = optimized.kind,
-                    quality = input.quality
-                )
+        val result = router.generate(
+            MediaRequest(
+                prompt = optimized.prompt,
+                mediaType = input.mediaType,
+                width = width,
+                height = height,
+                negativePrompt = optimized.negativePrompt,
+                scene = optimized.kind,
+                quality = input.quality
             )
-        } catch (e: GenerationException) {
-            return GenerationOutcome.Failure(e.error)
-        }
+        )
 
         val extension = if (input.mediaType == MediaKind.VIDEO) "mp4" else "jpg"
         val path = try {
             files.save(generationId, result.bytes, extension)
-        } catch (_: Exception) {
-            return GenerationOutcome.Failure(GenerationError.UNKNOWN)
+        } catch (_: Throwable) {
+            return GenerationOutcome.Failure(fallbackError(input.mediaType))
         }
 
         val image = GeneratedImage(
@@ -93,5 +102,17 @@ class GenerateImageUseCase(
         credits.deductForSuccessfulGeneration(generationId)
         notifier.notifyCreationReady(image.isVideo)
         GenerationOutcome.Success(image)
+    }
+
+    private fun mapError(kind: MediaKind, error: GenerationError): GenerationError {
+        return if (kind == MediaKind.VIDEO && error == GenerationError.UNKNOWN) {
+            GenerationError.VIDEO_UNAVAILABLE
+        } else {
+            error
+        }
+    }
+
+    private fun fallbackError(kind: MediaKind): GenerationError {
+        return if (kind == MediaKind.VIDEO) GenerationError.VIDEO_UNAVAILABLE else GenerationError.UNKNOWN
     }
 }

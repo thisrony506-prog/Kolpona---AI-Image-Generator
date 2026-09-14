@@ -8,6 +8,7 @@ import com.kolpona.ai.prompt.OptimizedGeneration
 import com.kolpona.ai.prompt.PromptTemplates
 import com.kolpona.ai.prompt.SceneIntent
 import com.kolpona.ai.prompt.SceneKind
+import kotlinx.coroutines.CancellationException
 
 /**
  * Understand the user first, expand short clothing requests, then apply master quality.
@@ -30,6 +31,8 @@ class PromptEnhancer(
         } else {
             try {
                 normalizer?.understand(cleaned) ?: cleaned
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
                 cleaned
             }

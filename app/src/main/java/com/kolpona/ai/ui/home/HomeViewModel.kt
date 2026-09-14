@@ -94,6 +94,7 @@ class HomeViewModel(
     private val _events = MutableSharedFlow<HomeEvent>(extraBufferCapacity = 8)
     val events: SharedFlow<HomeEvent> = _events.asSharedFlow()
     private var generateJob: Job? = null
+    private var generateSeq = 0
 
     init {
         viewModelScope.launch { creditManager.refreshDailyCredits() }
@@ -283,6 +284,7 @@ class HomeViewModel(
 
     private fun generateInternal(displayText: String, generationPrompt: String, snapshot: HomeUiState) {
         generateJob?.cancel()
+        val seq = ++generateSeq
         generateJob = viewModelScope.launch {
             val withoutError = snapshot.messages.filterNot { it is ChatItem.Error || it is ChatItem.Pending }
             val withHint = withoutError + ChatItem.User(displayText, "u-${System.currentTimeMillis()}")
@@ -294,8 +296,13 @@ class HomeViewModel(
                     messages = withHint + ChatItem.Pending(displayText)
                 )
             }
-            val outcome = try {
-                generateImage(
+            val fallback = if (snapshot.mediaType == MediaKind.VIDEO) {
+                GenerationError.VIDEO_UNAVAILABLE
+            } else {
+                GenerationError.UNKNOWN
+            }
+            try {
+                val outcome = generateImage(
                     GenerationInput(
                         prompt = generationPrompt,
                         style = snapshot.style,
@@ -306,48 +313,61 @@ class HomeViewModel(
                         mediaType = snapshot.mediaType
                     )
                 )
+                if (seq != generateSeq) return@launch
+                when (outcome) {
+                    is GenerationOutcome.Success -> {
+                        val count = snapshot.successfulGenerations + 1
+                        val ready = withHint + ChatItem.Image(outcome.image, "${outcome.image.id}-media")
+                        _state.update {
+                            it.copy(
+                                isGenerating = false,
+                                error = null,
+                                pendingPrompt = "",
+                                successfulGenerations = count,
+                                lastPrompt = displayText,
+                                messages = ready
+                            )
+                        }
+                        runCatching { persist(ready, displayText, displayText) }
+                        if (count % 2 == 0) {
+                            _events.emit(HomeEvent.ShowInterstitial)
+                        }
+                    }
+                    is GenerationOutcome.Failure -> {
+                        val failed = withHint + ChatItem.Error(outcome.error, "e-${System.currentTimeMillis()}")
+                        _state.update {
+                            it.copy(
+                                isGenerating = false,
+                                error = outcome.error,
+                                messages = failed
+                            )
+                        }
+                        runCatching { persist(failed, snapshot.lastPrompt, displayText) }
+                        if (outcome.error == GenerationError.INSUFFICIENT_CREDITS) {
+                            _events.emit(HomeEvent.NeedCredits)
+                        }
+                    }
+                }
             } catch (_: CancellationException) {
+                if (seq == generateSeq) {
+                    _state.update {
+                        it.copy(
+                            isGenerating = false,
+                            messages = withHint
+                        )
+                    }
+                }
+            } catch (_: Throwable) {
+                if (seq != generateSeq) return@launch
+                val failed = withHint + ChatItem.Error(fallback, "e-${System.currentTimeMillis()}")
                 _state.update {
                     it.copy(
                         isGenerating = false,
-                        messages = withHint
+                        error = fallback,
+                        messages = failed
                     )
                 }
-                return@launch
-            }
-            when (outcome) {
-                is GenerationOutcome.Success -> {
-                    val count = snapshot.successfulGenerations + 1
-                    val ready = withHint + ChatItem.Image(outcome.image, "${outcome.image.id}-media")
-                    _state.update {
-                        it.copy(
-                            isGenerating = false,
-                            error = null,
-                            pendingPrompt = "",
-                            successfulGenerations = count,
-                            lastPrompt = displayText,
-                            messages = ready
-                        )
-                    }
-                    persist(ready, displayText, displayText)
-                    if (count % 2 == 0) {
-                        _events.emit(HomeEvent.ShowInterstitial)
-                    }
-                }
-                is GenerationOutcome.Failure -> {
-                    val failed = withHint + ChatItem.Error(outcome.error, "e-${System.currentTimeMillis()}")
-                    _state.update {
-                        it.copy(
-                            isGenerating = false,
-                            error = outcome.error,
-                            messages = failed
-                        )
-                    }
-                    persist(failed, snapshot.lastPrompt, displayText)
-                    if (outcome.error == GenerationError.INSUFFICIENT_CREDITS) {
-                        _events.emit(HomeEvent.NeedCredits)
-                    }
-                }
+                runCatching { persist(failed, snapshot.lastPrompt, displayText) }
             }
         }
     }

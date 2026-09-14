@@ -101,7 +101,7 @@ class GenerateImageUseCase(
         history.insert(image)
         credits.deductForSuccessfulGeneration(generationId)
         notifier.notifyCreationReady(image.isVideo)
-        GenerationOutcome.Success(image)
+        return GenerationOutcome.Success(image)
     }
 
     private fun mapError(kind: MediaKind, error: GenerationError): GenerationError {

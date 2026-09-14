@@ -119,7 +119,8 @@ object MediaPayload {
             lower.contains("replicate.delivery") ||
             lower.contains("wavespeed") ||
             lower.contains("vidu.com") ||
-            lower.contains("aig.cloudflare.com")
+            lower.contains("aig.cloudflare.com") ||
+            lower.contains("googleapis.com")
     }
 
     fun queueDone(text: String): Boolean {

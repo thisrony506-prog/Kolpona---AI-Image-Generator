@@ -75,7 +75,7 @@ class AppContainer(app: Application) {
     val cloudflareApi: CloudflareApiService = CloudflareApiService(okHttpClient)
     val videoBackend: VideoBackendService = VideoBackendService(okHttpClient, authRepository)
     val textNormalize: TextNormalizeService = TextNormalizeService(huggingFaceApi, cloudflareApi)
-    val generationRouter: GenerationRouter = GenerationRouter(huggingFaceApi, cloudflareApi, videoBackend)
+    val generationRouter: GenerationRouter = GenerationRouter(huggingFaceApi, cloudflareApi)
 
     val generateImageUseCase: GenerateImageUseCase = GenerateImageUseCase(
         router = generationRouter,

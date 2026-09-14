@@ -27,13 +27,12 @@ data class MediaBytes(
 
 /**
  * Image: race Hugging Face FLUX and Cloudflare FLUX.1-schnell.
- * Video: Firebase generateVideo when live, then Hugging Face T2V, then Cloudflare T2V, then I2V.
- * Never faked.
+ * Video: Hugging Face T2V, then Cloudflare T2V, then a still from the working photo
+ * path animated with I2V. Never faked. Never blocked by a missing Cloud Function.
  */
 class GenerationRouter(
     private val huggingFace: HuggingFaceApiService,
-    private val cloudflare: CloudflareApiService,
-    private val videoBackend: VideoBackendService
+    private val cloudflare: CloudflareApiService
 ) {
     suspend fun generate(request: MediaRequest): MediaBytes {
         return if (request.mediaType == MediaKind.VIDEO) {
@@ -108,45 +107,24 @@ class GenerationRouter(
 
     private suspend fun generateVideo(request: MediaRequest): MediaBytes {
         var last: GenerationException? = null
-        val aspect = when {
-            request.width == request.height -> "1:1"
-            request.width > request.height -> "16:9"
-            else -> "9:16"
-        }
-        try {
-            val result = videoBackend.generate(
-                prompt = request.prompt,
-                aspectRatio = aspect,
-                width = request.width,
-                height = request.height
-            )
-            if (qualityOk(result.bytes, MediaKind.VIDEO)) return result
-            last = GenerationException(GenerationError.VIDEO_UNAVAILABLE)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: GenerationException) {
-            last = e
-        }
 
         if (huggingFace.isConfigured) {
-            for (model in HuggingFaceConfig.VIDEO_MODELS) {
-                try {
-                    val bytes = huggingFace.generateVideo(
-                        prompt = request.prompt,
-                        model = model,
-                        width = request.width,
-                        height = request.height,
-                        negativePrompt = request.negativePrompt
-                    )
-                    if (qualityOk(bytes, MediaKind.VIDEO)) {
-                        return MediaBytes(bytes, model)
-                    }
-                    last = GenerationException(GenerationError.VIDEO_UNAVAILABLE)
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: GenerationException) {
-                    last = e
+            try {
+                val bytes = huggingFace.generateVideo(
+                    prompt = request.prompt,
+                    model = HuggingFaceConfig.VIDEO_MODEL,
+                    width = request.width,
+                    height = request.height,
+                    negativePrompt = request.negativePrompt
+                )
+                if (qualityOk(bytes, MediaKind.VIDEO)) {
+                    return MediaBytes(bytes, HuggingFaceConfig.VIDEO_MODEL)
                 }
+                last = GenerationException(GenerationError.VIDEO_UNAVAILABLE)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: GenerationException) {
+                last = e
             }
         }
 
@@ -172,6 +150,18 @@ class GenerationRouter(
             throw videoError(last ?: e)
         }
 
+        if (huggingFace.isConfigured) {
+            try {
+                val animated = huggingFace.generateVideoFromImage(request.prompt, frame.bytes)
+                if (qualityOk(animated, MediaKind.VIDEO)) {
+                    return MediaBytes(animated, "wan-i2v")
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: GenerationException) {
+                last = e
+            }
+        }
         if (cloudflare.isConfigured) {
             try {
                 val animated = cloudflare.generateVideoFromImage(
@@ -189,28 +179,12 @@ class GenerationRouter(
                 last = e
             }
         }
-        if (huggingFace.isConfigured) {
-            try {
-                val animated = huggingFace.generateVideoFromImage(request.prompt, frame.bytes)
-                if (qualityOk(animated, MediaKind.VIDEO)) {
-                    return MediaBytes(animated, "ltx-i2v")
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: GenerationException) {
-                last = e
-            }
-        }
         throw videoError(last)
     }
 
     private fun videoError(last: GenerationException?): GenerationException {
         return when (last?.error) {
-            GenerationError.NETWORK,
-            GenerationError.RATE_LIMIT,
-            GenerationError.TIMEOUT,
-            GenerationError.INVALID_PROMPT,
-            GenerationError.PERMISSION_DENIED -> last
+            GenerationError.NETWORK, GenerationError.RATE_LIMIT -> last
             else -> GenerationException(GenerationError.VIDEO_UNAVAILABLE)
         }
     }

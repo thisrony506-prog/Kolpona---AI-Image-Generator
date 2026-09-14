@@ -87,7 +87,8 @@ class HuggingFaceApiService(
     ): ByteArray = withContext(Dispatchers.IO) {
         if (!isConfigured) throw GenerationException(GenerationError.VIDEO_UNAVAILABLE)
         val quoted = jsonEscape(prompt.take(800))
-        val dataUri = "data:image/jpeg;base64," + Base64.encodeToString(jpeg, Base64.NO_WRAP)
+        val mime = if (jpeg.size > 3 && jpeg[0] == 0x89.toByte()) "image/png" else "image/jpeg"
+        val dataUri = "data:$mime;base64," + Base64.encodeToString(jpeg, Base64.NO_WRAP)
         val imageJson = jsonEscape(dataUri)
         val media = "application/json; charset=utf-8".toMediaType()
         val bodies = listOf(
@@ -96,8 +97,8 @@ class HuggingFaceApiService(
             """{"inputs":"$quoted","image":"$imageJson"}"""
         )
         val urls = listOf(
-            HuggingFaceConfig.I2V_URL,
-            "${HuggingFaceConfig.ROUTER_HOST}/fal-ai/fal-ai/wan/v2.2-5b/image-to-video"
+            "${HuggingFaceConfig.ROUTER_HOST}/fal-ai/fal-ai/wan/v2.2-5b/image-to-video",
+            HuggingFaceConfig.I2V_URL
         ).map { withFalQueue(it) }
         var last: GenerationException? = null
         for (url in urls) {
@@ -106,7 +107,7 @@ class HuggingFaceApiService(
                     return@withContext execute(url, body, media, expectVideo = true, allowRetry = true)
                 } catch (e: GenerationException) {
                     last = e
-                    if (e.error == GenerationError.RATE_LIMIT || e.error == GenerationError.NETWORK) throw e
+                    if (e.error == GenerationError.NETWORK) throw e
                     if (e.error != GenerationError.INVALID_PROMPT) break
                 }
             }
@@ -385,28 +386,14 @@ class HuggingFaceApiService(
     }
 
     private fun videoUrls(model: String): List<String> {
-        val fromHub = runCatching { fetchProviderUrls(model, "text-to-video") }.getOrNull().orEmpty()
-        val hardcoded = when {
-            model.contains("A14B", ignoreCase = true) -> listOf(
-                "${HuggingFaceConfig.ROUTER_HOST}/fal-ai/fal-ai/wan/v2.2-a14b/text-to-video",
-                "${HuggingFaceConfig.ROUTER_HOST}/replicate/v1/models/wan-video/wan-2.2-t2v-fast/predictions",
-                "${HuggingFaceConfig.ROUTER_HOST}/wavespeed/api/v3/wavespeed-ai/wan-2.2/t2v-720p"
-            )
-            model.contains("Wan2.2", ignoreCase = true) -> listOf(
-                "${HuggingFaceConfig.ROUTER_HOST}/fal-ai/fal-ai/wan/v2.2-5b/text-to-video",
-                "${HuggingFaceConfig.ROUTER_HOST}/replicate/v1/models/wan-video/wan-2.2-5b-fast/predictions",
-                "${HuggingFaceConfig.ROUTER_HOST}/wavespeed/api/v3/wavespeed-ai/wan-2.2/t2v-5b-720p"
-            )
+        return when {
             model.contains("Wan2.1", ignoreCase = true) -> listOf(
                 "${HuggingFaceConfig.ROUTER_HOST}/fal-ai/fal-ai/wan/v2.1/1.3b/text-to-video"
             )
-            model.contains("Hunyuan", ignoreCase = true) -> listOf(
-                "${HuggingFaceConfig.ROUTER_HOST}/fal-ai/fal-ai/hunyuan-video",
-                "${HuggingFaceConfig.ROUTER_HOST}/wavespeed/api/v3/wavespeed-ai/hunyuan-video/t2v"
+            else -> listOf(
+                "${HuggingFaceConfig.ROUTER_HOST}/fal-ai/fal-ai/wan/v2.2-5b/text-to-video"
             )
-            else -> emptyList()
         }
-        return (hardcoded + fromHub).distinct()
     }
 
     private fun fetchProviderUrls(model: String, task: String): List<String> {
@@ -449,7 +436,7 @@ class HuggingFaceApiService(
         return when {
             url.contains("replicate", ignoreCase = true) -> listOf(replicate)
             url.contains("wavespeed", ignoreCase = true) -> listOf(promptOnly)
-            else -> listOf(fal, promptOnly)
+            else -> listOf(promptOnly, fal)
         }.distinct()
     }
 

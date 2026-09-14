@@ -30,9 +30,9 @@ class CloudflareApiService(
 
     private val videoClient: OkHttpClient = client.newBuilder()
         .connectTimeout(20, TimeUnit.SECONDS)
-        .readTimeout(400, TimeUnit.SECONDS)
+        .readTimeout(180, TimeUnit.SECONDS)
         .writeTimeout(45, TimeUnit.SECONDS)
-        .callTimeout(420, TimeUnit.SECONDS)
+        .callTimeout(200, TimeUnit.SECONDS)
         .build()
 
     suspend fun generateImage(
@@ -95,7 +95,7 @@ class CloudflareApiService(
                 last = GenerationException(GenerationError.VIDEO_UNAVAILABLE)
             } catch (e: GenerationException) {
                 last = e
-                if (e.error == GenerationError.RATE_LIMIT || e.error == GenerationError.NETWORK) throw e
+                if (e.error == GenerationError.NETWORK) throw e
             }
         }
         throw last ?: GenerationException(GenerationError.VIDEO_UNAVAILABLE)
@@ -108,18 +108,19 @@ class CloudflareApiService(
         height: Int
     ): ByteArray = withContext(Dispatchers.IO) {
         if (!isConfigured) throw GenerationException(GenerationError.VIDEO_UNAVAILABLE)
-        val dataUri = "data:image/jpeg;base64," + Base64.encodeToString(jpeg, Base64.NO_WRAP)
+        val mime = if (jpeg.size > 3 && jpeg[0] == 0x89.toByte()) "image/png" else "image/jpeg"
+        val dataUri = "data:$mime;base64," + Base64.encodeToString(jpeg, Base64.NO_WRAP)
         val aspect = aspectOf(width, height)
         val pixels = if (width >= height) "1280x720" else "720x1280"
         var last: GenerationException? = null
-        for (model in CloudflareConfig.VIDEO_MODELS) {
+        for (model in CloudflareConfig.I2V_MODELS) {
             try {
                 val bytes = runVideo(model, videoInput(model, prompt, aspect, pixels, imageUri = dataUri))
                 if (MediaPayload.looksLikeVideo(bytes) && bytes.size >= 4_000) return@withContext bytes
                 last = GenerationException(GenerationError.VIDEO_UNAVAILABLE)
             } catch (e: GenerationException) {
                 last = e
-                if (e.error == GenerationError.RATE_LIMIT || e.error == GenerationError.NETWORK) throw e
+                if (e.error == GenerationError.NETWORK) throw e
             }
         }
         throw last ?: GenerationException(GenerationError.VIDEO_UNAVAILABLE)

@@ -14,11 +14,16 @@ object CloudflareConfig {
         "@cf/meta/llama-3.2-3b-instruct",
         "@cf/meta/llama-3.1-8b-instruct"
     )
-    const val USER_AGENT = "Kolpona/1.14.6 (Android)"
+    const val USER_AGENT = "Kolpona/1.14.7 (Android)"
     val VIDEO_MODELS: List<String> = listOf(
-        "black-forest-labs/flux-3-video",
         "vidu/q3-pro",
+        "black-forest-labs/flux-3-video",
         "lightricks/ltx-2-5-fast"
+    )
+    val I2V_MODELS: List<String> = listOf(
+        "lightricks/ltx-2-5-fast",
+        "vidu/q3-pro",
+        "black-forest-labs/flux-3-video"
     )
 
     val accountId: String

@@ -1,5 +1,6 @@
 package com.kolpona.ai.data.api
 
+import com.kolpona.ai.utils.JpegBytes
 import com.kolpona.ai.domain.model.GenerationError
 import com.kolpona.ai.domain.model.MediaKind
 import kotlinx.coroutines.CancellationException
@@ -27,8 +28,7 @@ data class MediaBytes(
 
 /**
  * Image: race Hugging Face FLUX and Cloudflare FLUX.1-schnell.
- * Video: Hugging Face T2V, then Cloudflare T2V, then a still from the working photo
- * path animated with I2V. Never faked. Never blocked by a missing Cloud Function.
+ * Video: still from the working photo path, then I2V, then T2V. Never faked.
  */
 class GenerationRouter(
     private val huggingFace: HuggingFaceApiService,
@@ -107,6 +107,47 @@ class GenerationRouter(
 
     private suspend fun generateVideo(request: MediaRequest): MediaBytes {
         var last: GenerationException? = null
+        val frame = try {
+            generateImage(request)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: GenerationException) {
+            last = e
+            null
+        }
+
+        if (frame != null) {
+            val jpeg = JpegBytes.ensure(frame.bytes)
+            if (cloudflare.isConfigured) {
+                try {
+                    val animated = cloudflare.generateVideoFromImage(
+                        request.prompt,
+                        jpeg,
+                        request.width,
+                        request.height
+                    )
+                    if (qualityOk(animated, MediaKind.VIDEO)) {
+                        return MediaBytes(animated, "cloudflare-i2v")
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: GenerationException) {
+                    last = e
+                }
+            }
+            if (huggingFace.isConfigured) {
+                try {
+                    val animated = huggingFace.generateVideoFromImage(request.prompt, jpeg)
+                    if (qualityOk(animated, MediaKind.VIDEO)) {
+                        return MediaBytes(animated, "wan-i2v")
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: GenerationException) {
+                    last = e
+                }
+            }
+        }
 
         if (huggingFace.isConfigured) {
             try {
@@ -135,44 +176,6 @@ class GenerationRouter(
                     return MediaBytes(bytes, "cloudflare-video")
                 }
                 last = GenerationException(GenerationError.VIDEO_UNAVAILABLE)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: GenerationException) {
-                last = e
-            }
-        }
-
-        val frame = try {
-            generateImage(request)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: GenerationException) {
-            throw videoError(last ?: e)
-        }
-
-        if (huggingFace.isConfigured) {
-            try {
-                val animated = huggingFace.generateVideoFromImage(request.prompt, frame.bytes)
-                if (qualityOk(animated, MediaKind.VIDEO)) {
-                    return MediaBytes(animated, "wan-i2v")
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: GenerationException) {
-                last = e
-            }
-        }
-        if (cloudflare.isConfigured) {
-            try {
-                val animated = cloudflare.generateVideoFromImage(
-                    request.prompt,
-                    frame.bytes,
-                    request.width,
-                    request.height
-                )
-                if (qualityOk(animated, MediaKind.VIDEO)) {
-                    return MediaBytes(animated, "cloudflare-i2v")
-                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: GenerationException) {

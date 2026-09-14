@@ -140,6 +140,11 @@
     <string name="error_save">Couldn\'t save. Please try again.</string>
     <string name="error_generic">Something went wrong. Please try again.</string>
     <string name="error_video">Couldn\'t create the video. Try again — a clip can take a couple of minutes.</string>
+    <string name="error_video_token">Video studio authentication failed. Try again later.</string>
+    <string name="error_video_permission">Sign in to create a video.</string>
+    <string name="error_video_model">That video model is unavailable. Try again shortly.</string>
+    <string name="error_video_provider">The video studio is busy. Try again in a moment.</string>
+    <string name="cancel_generation">Cancel</string>
 
     <string name="onboarding_1_title">Imagination</string>
     <string name="onboarding_1_quote_1">Unleash your imagination. Chat naturally with Kolpona and watch your ideas come to life.</string>

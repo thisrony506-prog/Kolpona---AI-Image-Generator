@@ -22,8 +22,10 @@ enum class AspectRatio(
         return align(w) to align(h)
     }
 
-    fun videoDimensions(): Pair<Int, Int> {
-        return if (baseWidth >= baseHeight) 1280 to 720 else 720 to 1280
+    fun videoDimensions(): Pair<Int, Int> = when {
+        baseWidth == baseHeight -> 720 to 720
+        baseWidth > baseHeight -> 1280 to 720
+        else -> 720 to 1280
     }
 
     private fun align(value: Int): Int = value - (value % 8)

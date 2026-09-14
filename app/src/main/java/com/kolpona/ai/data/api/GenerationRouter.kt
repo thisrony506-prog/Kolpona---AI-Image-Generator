@@ -27,11 +27,12 @@ data class MediaBytes(
 
 /**
  * Image: race Hugging Face FLUX and Cloudflare FLUX.1-schnell.
- * Video: Cloudflare first (same path as working photos), then Hugging Face. Never faked.
+ * Video: Firebase generateVideo → Hugging Face Inference Providers. Never faked.
  */
 class GenerationRouter(
     private val huggingFace: HuggingFaceApiService,
-    private val cloudflare: CloudflareApiService
+    private val cloudflare: CloudflareApiService,
+    private val videoBackend: VideoBackendService
 ) {
     suspend fun generate(request: MediaRequest): MediaBytes {
         return if (request.mediaType == MediaKind.VIDEO) {
@@ -105,74 +106,21 @@ class GenerationRouter(
     }
 
     private suspend fun generateVideo(request: MediaRequest): MediaBytes {
-        var last: GenerationException? = null
-        if (cloudflare.isConfigured) {
-            try {
-                val bytes = cloudflare.generateVideo(request.prompt, request.width, request.height)
-                if (qualityOk(bytes, MediaKind.VIDEO)) {
-                    return MediaBytes(bytes, "cloudflare-video")
-                }
-                last = GenerationException(GenerationError.VIDEO_UNAVAILABLE)
-            } catch (e: GenerationException) {
-                last = e
-            }
+        val aspect = when {
+            request.width == request.height -> "1:1"
+            request.width > request.height -> "16:9"
+            else -> "9:16"
         }
-        if (huggingFace.isConfigured) {
-            try {
-                val bytes = huggingFace.generateVideo(
-                    prompt = request.prompt,
-                    model = HuggingFaceConfig.VIDEO_MODEL,
-                    width = request.width,
-                    height = request.height,
-                    negativePrompt = request.negativePrompt
-                )
-                if (qualityOk(bytes, MediaKind.VIDEO)) {
-                    return MediaBytes(bytes, HuggingFaceConfig.VIDEO_MODEL)
-                }
-                last = GenerationException(GenerationError.VIDEO_UNAVAILABLE)
-            } catch (e: GenerationException) {
-                last = e
-            }
+        val result = videoBackend.generate(
+            prompt = request.prompt,
+            aspectRatio = aspect,
+            width = request.width,
+            height = request.height
+        )
+        if (!qualityOk(result.bytes, MediaKind.VIDEO)) {
+            throw GenerationException(GenerationError.VIDEO_UNAVAILABLE)
         }
-        val frame = try {
-            generateImage(request)
-        } catch (e: GenerationException) {
-            throw videoError(last ?: e)
-        }
-        if (cloudflare.isConfigured) {
-            try {
-                val animated = cloudflare.generateVideoFromImage(
-                    request.prompt,
-                    frame.bytes,
-                    request.width,
-                    request.height
-                )
-                if (qualityOk(animated, MediaKind.VIDEO)) {
-                    return MediaBytes(animated, "cloudflare-i2v")
-                }
-            } catch (e: GenerationException) {
-                last = e
-            }
-        }
-        if (huggingFace.isConfigured) {
-            try {
-                val animated = huggingFace.generateVideoFromImage(request.prompt, frame.bytes)
-                if (qualityOk(animated, MediaKind.VIDEO)) {
-                    return MediaBytes(animated, "ltx-i2v")
-                }
-            } catch (e: GenerationException) {
-                last = e
-            }
-        }
-        throw videoError(last)
-    }
-
-    private fun videoError(last: GenerationException?): GenerationException {
-        return when (last?.error) {
-            GenerationError.NETWORK, GenerationError.RATE_LIMIT ->
-                last ?: GenerationException(GenerationError.VIDEO_UNAVAILABLE)
-            else -> GenerationException(GenerationError.VIDEO_UNAVAILABLE)
-        }
+        return result
     }
 
     private fun qualityOk(bytes: ByteArray, kind: MediaKind): Boolean =

@@ -7,6 +7,7 @@ import com.kolpona.ai.data.api.AuthInterceptor
 import com.kolpona.ai.data.api.CloudflareApiService
 import com.kolpona.ai.data.api.GenerationRouter
 import com.kolpona.ai.data.api.HuggingFaceApiService
+import com.kolpona.ai.data.api.VideoBackendService
 import com.kolpona.ai.data.api.TextNormalizeService
 import com.kolpona.ai.data.cloud.UserCloudRepository
 import com.kolpona.ai.data.cloud.UserSessionSync
@@ -72,8 +73,9 @@ class AppContainer(app: Application) {
 
     val huggingFaceApi: HuggingFaceApiService = HuggingFaceApiService(okHttpClient)
     val cloudflareApi: CloudflareApiService = CloudflareApiService(okHttpClient)
+    val videoBackend: VideoBackendService = VideoBackendService(okHttpClient, authRepository)
     val textNormalize: TextNormalizeService = TextNormalizeService(huggingFaceApi, cloudflareApi)
-    val generationRouter: GenerationRouter = GenerationRouter(huggingFaceApi, cloudflareApi)
+    val generationRouter: GenerationRouter = GenerationRouter(huggingFaceApi, cloudflareApi, videoBackend)
 
     val generateImageUseCase: GenerateImageUseCase = GenerateImageUseCase(
         router = generationRouter,

@@ -34,3 +34,4 @@ local.properties
 secrets.properties
 pollinations.key
 api_key.txt
+functions/node_modules/

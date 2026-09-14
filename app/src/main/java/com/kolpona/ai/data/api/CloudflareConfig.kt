@@ -14,7 +14,7 @@ object CloudflareConfig {
         "@cf/meta/llama-3.2-3b-instruct",
         "@cf/meta/llama-3.1-8b-instruct"
     )
-    const val USER_AGENT = "Kolpona/1.14.3 (Android)"
+    const val USER_AGENT = "Kolpona/1.14.4 (Android)"
     val VIDEO_MODELS: List<String> = listOf(
         "vidu/q3-pro",
         "lightricks/ltx-2-5-fast"

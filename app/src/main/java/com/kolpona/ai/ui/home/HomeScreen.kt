@@ -349,7 +349,8 @@ fun HomeScreen(
                                 )
                                 is ChatItem.Pending -> GeneratingCard(
                                     video = state.mediaType == MediaKind.VIDEO,
-                                    aspect = state.aspectRatio
+                                    aspect = state.aspectRatio,
+                                    onCancel = viewModel::cancelGeneration
                                 )
                                 is ChatItem.Error -> ErrorBubble(error = item.error, onRetry = viewModel::retry)
                             }
@@ -1089,7 +1090,7 @@ private fun LoopingVideo(path: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun GeneratingCard(video: Boolean, aspect: AspectRatio) {
+private fun GeneratingCard(video: Boolean, aspect: AspectRatio, onCancel: () -> Unit) {
     val preview = aspect.shortLabel.split(":").let {
         val w = it.getOrNull(0)?.toFloatOrNull() ?: 1f
         val h = it.getOrNull(1)?.toFloatOrNull() ?: 1f
@@ -1181,6 +1182,9 @@ private fun GeneratingCard(video: Boolean, aspect: AspectRatio) {
                 color = SoftWhite,
                 fontWeight = FontWeight.Medium
             )
+            TextButton(onClick = onCancel) {
+                Text(stringResource(R.string.cancel_generation), color = ElectricBlue)
+            }
         }
     }
 }

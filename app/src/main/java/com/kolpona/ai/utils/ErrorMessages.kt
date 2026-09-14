@@ -14,6 +14,10 @@ fun GenerationError.messageRes(): Int = when (this) {
     GenerationError.EMPTY_RESPONSE -> R.string.error_empty_response
     GenerationError.API -> R.string.error_api
     GenerationError.VIDEO_UNAVAILABLE -> R.string.error_video
+    GenerationError.INVALID_TOKEN -> R.string.error_video_token
+    GenerationError.PERMISSION_DENIED -> R.string.error_video_permission
+    GenerationError.MODEL_UNAVAILABLE -> R.string.error_video_model
+    GenerationError.PROVIDER_UNAVAILABLE -> R.string.error_video_provider
     GenerationError.UNKNOWN -> R.string.error_generic
 }
 

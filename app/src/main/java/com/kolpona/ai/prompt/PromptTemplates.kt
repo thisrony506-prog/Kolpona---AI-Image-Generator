@@ -14,10 +14,9 @@ object PromptTemplates {
             "natural colors, volumetric light"
 
     const val VIDEO =
-        "cinematic video, smooth natural motion, realistic physics, fabric and hair moving naturally, " +
-            "4k, 24fps, dolly shot, shallow depth of field, studio lighting, ultra detailed, " +
-            "photorealistic, fluid motion, high quality movement, slow tracking shot, subtle movement, " +
-            "masterpiece, best quality, 8k"
+        "cinematic 5 second video, 24fps, smooth natural camera movement, realistic physics, " +
+            "fabric and hair moving naturally, photorealistic lighting, sharp focus, high detail, " +
+            "no flicker, no distortion, fluid motion, shallow depth of field"
 
     const val FASHION =
         "fashion commercial, Vogue magazine style, full body, studio lighting, fabric detail, " +

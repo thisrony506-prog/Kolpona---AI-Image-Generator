@@ -22,6 +22,8 @@ import com.kolpona.ai.domain.model.ImageStyle
 import com.kolpona.ai.domain.model.MediaKind
 import com.kolpona.ai.utils.ImageSaver
 import com.kolpona.ai.utils.ImageShare
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -91,6 +93,7 @@ class HomeViewModel(
 
     private val _events = MutableSharedFlow<HomeEvent>(extraBufferCapacity = 8)
     val events: SharedFlow<HomeEvent> = _events.asSharedFlow()
+    private var generateJob: Job? = null
 
     init {
         viewModelScope.launch { creditManager.refreshDailyCredits() }
@@ -170,6 +173,10 @@ class HomeViewModel(
 
     fun clearPrompt() {
         _state.update { it.copy(prompt = "") }
+    }
+
+    fun cancelGeneration() {
+        generateJob?.cancel()
     }
 
     fun newChat() {
@@ -275,7 +282,8 @@ class HomeViewModel(
     }
 
     private fun generateInternal(displayText: String, generationPrompt: String, snapshot: HomeUiState) {
-        viewModelScope.launch {
+        generateJob?.cancel()
+        generateJob = viewModelScope.launch {
             val withoutError = snapshot.messages.filterNot { it is ChatItem.Error || it is ChatItem.Pending }
             val withHint = withoutError + ChatItem.User(displayText, "u-${System.currentTimeMillis()}")
             _state.update {
@@ -286,17 +294,27 @@ class HomeViewModel(
                     messages = withHint + ChatItem.Pending(displayText)
                 )
             }
-            val outcome = generateImage(
-                GenerationInput(
-                    prompt = generationPrompt,
-                    style = snapshot.style,
-                    aspectRatio = snapshot.aspectRatio,
-                    quality = snapshot.quality,
-                    modelId = snapshot.modelId,
-                    enhance = snapshot.enhance,
-                    mediaType = snapshot.mediaType
+            val outcome = try {
+                generateImage(
+                    GenerationInput(
+                        prompt = generationPrompt,
+                        style = snapshot.style,
+                        aspectRatio = snapshot.aspectRatio,
+                        quality = snapshot.quality,
+                        modelId = snapshot.modelId,
+                        enhance = snapshot.enhance,
+                        mediaType = snapshot.mediaType
+                    )
                 )
-            )
+            } catch (_: CancellationException) {
+                _state.update {
+                    it.copy(
+                        isGenerating = false,
+                        messages = withHint
+                    )
+                }
+                return@launch
+            }
             when (outcome) {
                 is GenerationOutcome.Success -> {
                     val count = snapshot.successfulGenerations + 1

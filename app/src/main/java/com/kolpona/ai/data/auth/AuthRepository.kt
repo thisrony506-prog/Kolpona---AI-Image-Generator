@@ -78,6 +78,10 @@ class AuthRepository(
 
     fun isSignedIn(): Boolean = currentUser != null
 
+    suspend fun idToken(forceRefresh: Boolean = false): String? = withContext(Dispatchers.IO) {
+        runCatching { currentUser?.getIdToken(forceRefresh)?.await()?.token }.getOrNull()
+    }
+
     suspend fun signIn(email: String, password: String): AuthOutcome {
         val auth = requireAuth() ?: return AuthOutcome.Failure(R.string.auth_error_not_configured)
         validateEmail(email)?.let { return it }
